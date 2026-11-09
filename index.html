@@ -105,13 +105,11 @@
     .cam-btn{background:linear-gradient(180deg,var(--charcoal-light),var(--charcoal));border:1.5px solid var(--champagne-dark);color:var(--ivory);padding:10px 4px;border-radius:10px;font-family:var(--font-main);font-weight:800;font-size:10px;cursor:pointer}
     .cam-btn:active{transform:scale(.95)}
     .cam-btn:hover{border-color:var(--champagne);color:var(--champagne)}
-    /* ===== ADDED: أنماط خلفيات الرقعة ===== */
     .background-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
     .bg-btn{background:linear-gradient(180deg,var(--charcoal-light),var(--charcoal));border:1.5px solid var(--champagne-dark);color:var(--ivory);padding:12px 4px;border-radius:10px;font-family:var(--font-main);font-weight:800;font-size:10px;cursor:pointer;transition:all .2s}
     .bg-btn:active{transform:scale(.95)}
     .bg-btn:hover{border-color:var(--champagne);color:var(--champagne)}
     .bg-btn.active{border-color:var(--champagne);box-shadow:0 0 12px rgba(201,169,106,.5);background:rgba(201,169,106,.15);color:var(--champagne)}
-    /* ===== END ADDED ===== */
     .reset-btn{width:100%;margin-top:10px;padding:9px;border-radius:10px;background:rgba(185,124,110,.2);border:1.5px solid var(--coral);color:var(--coral);font-family:var(--font-main);font-weight:800;font-size:12px;cursor:pointer}
     #gameScreen{display:none;position:fixed;inset:0;background:linear-gradient(to bottom,var(--navy-deep) 0%,var(--navy) 55%,var(--charcoal) 100%);flex-direction:column;z-index:50;overflow:hidden}
     #gameScreen.active{display:flex}
@@ -298,6 +296,7 @@
                 <button class="game-btn gold" onclick="promote('r')">قلعة</button>
                 <button class="game-btn gold" onclick="promote('b')">فيل</button>
                 <button class="game-btn gold" onclick="promote('n')">حصان</button>
+                <button class="game-btn red" onclick="cancelPromotion()">إلغاء</button>
             </div>
         </div>
         <div id="moves">سجل الحركات سيظهر هنا</div>
@@ -376,10 +375,8 @@
         <div class="color-list" id="colorList"></div>
         <div class="modal-section-title">📷 زوايا الكاميرا</div>
         <div class="camera-grid" id="cameraGrid"></div>
-        <!-- ===== ADDED: قسم خلفيات الرقعة ===== -->
         <div class="modal-section-title">🖼️ خلفية الرقعة</div>
         <div class="background-grid" id="backgroundGrid"></div>
-        <!-- ===== END ADDED ===== -->
         <button class="reset-btn" onclick="resetCustomization()">↺ استعادة الافتراضي</button>
         <button class="modal-close" onclick="closeModal('customization')">إغلاق</button>
     </div>
@@ -402,10 +399,6 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Chess } from "chess";
 
-/* =========================================================
-   نظام الصوت الاحترافي - مُولَّد رقمياً عبر Web Audio API
-   ========================================================= */
-
 const DEFAULT_SETTINGS = {
     sound: true,
     music: true,
@@ -414,12 +407,11 @@ const DEFAULT_SETTINGS = {
     haptic: false
 };
 
-// ===== ADDED: boardBg =====
 const DEFAULT_CUSTOM = {
     lightSquare:'#E8DEC8', darkSquare:'#1E2A3D',
     frame:'#2A2C33', accent:'#C9A96A',
     base:'#141519', lightColor:'#FFF0D0',
-    boardBg:'cosmic'
+    boardBg:'castle'
 };
 
 let currentCustom = { ...DEFAULT_CUSTOM };
@@ -440,156 +432,373 @@ let playerData = {
     }
 };
 
-// ===== ADDED: تعريفات خلفيات الرقعة =====
+/* =========================================================
+   نظام خلفيات الرقعة (3D) — قلعة / غابة / عملاق
+   ========================================================= */
+
 const BOARD_BACKGROUNDS = {
-    cosmic: {
-        name: '🌌 سماء كونية',
-        bg: 0x000308, fog: 0x0a1830, fogNear: 20, fogFar: 50
-    },
-    hall: {
-        name: '🏰 قاعة ذهبية',
-        bg: 0x0a0505, fog: 0x1a0e08, fogNear: 18, fogFar: 48
-    },
-    mist: {
-        name: '🔮 ضباب بنفسجي',
-        bg: 0x05001a, fog: 0x1a0a30, fogNear: 22, fogFar: 55
-    }
+    castle: { name: '🏰 قلعة', bg: 0x080a15, fog: 0x101828, fogNear: 22, fogFar: 62, sky: ['#0a1428', '#1a2840'] },
+    forest: { name: '🌲 غابة', bg: 0x020804, fog: 0x06180c, fogNear: 14, fogFar: 45, sky: ['#061410', '#0a1a10'] },
+    giant:  { name: '🗿 عملاق', bg: 0x0a1a30, fog: 0x1a3050, fogNear: 30, fogFar: 90, sky: ['#1a3050', '#0a1a30'] }
 };
 
-// ===== ADDED: مولّدات نسيج الخلفيات =====
-function makeBgTexture(type){
-    const canvas = document.createElement('canvas');
-    canvas.width = 1024;
-    canvas.height = 512;
-    const ctx = canvas.getContext('2d');
+let boardBgGroup = null;
+let floorMesh = null;
+let _lastAppliedBg = null;
 
-    if(type === 'cosmic'){
-        const grad = ctx.createLinearGradient(0, 0, 0, 512);
-        grad.addColorStop(0, '#000308');
-        grad.addColorStop(0.5, '#0a1830');
-        grad.addColorStop(1, '#1a0a2e');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, 1024, 512);
-        // نجوم
-        for(let i = 0; i < 500; i++){
-            const x = Math.random() * 1024;
-            const y = Math.random() * 512;
-            const r = Math.random() * 1.5;
-            const a = Math.random() * 0.85 + 0.15;
-            ctx.fillStyle = `rgba(255,255,255,${a})`;
-            ctx.beginPath();
-            ctx.arc(x, y, r, 0, Math.PI * 2);
-            ctx.fill();
+function makeGlowSpriteTexture(){
+    const size = 128;
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+    g.addColorStop(0, 'rgba(255,240,180,1)');
+    g.addColorStop(0.4, 'rgba(255,180,80,0.5)');
+    g.addColorStop(1, 'rgba(255,140,40,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+}
+
+function makeSkyDomeTexture(top, bottom){
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    const ctx = c.getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, top);
+    grad.addColorStop(1, bottom);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+}
+
+function buildCastleBg() {
+    const g = new THREE.Group();
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x1a1a24, roughness: 0.95, metalness: 0.05 });
+    const stoneDarkMat = new THREE.MeshStandardMaterial({ color: 0x0e0e16, roughness: 0.98, metalness: 0.02 });
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x3a1a10, roughness: 0.7, metalness: 0.3 });
+    const flagMat = new THREE.MeshStandardMaterial({ color: 0x8a2820, side: THREE.DoubleSide, roughness: 0.8 });
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xC9A96A, roughness: 0.3, metalness: 0.9, emissive: 0x2a1f08, emissiveIntensity: 0.5 });
+
+    const wallDist = 24;
+    const wallHeight = 12;
+    const wallThick = 2;
+
+    const walls = [
+        { w: wallDist*2, d: wallThick, x: 0, z: -wallDist },
+        { w: wallDist*2, d: wallThick, x: 0, z: wallDist },
+        { w: wallThick, d: wallDist*2, x: -wallDist, z: 0 },
+        { w: wallThick, d: wallDist*2, x: wallDist, z: 0 }
+    ];
+    walls.forEach(({ w, d, x, z }) => {
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(w, wallHeight, d), stoneMat);
+        wall.position.set(x, wallHeight/2, z);
+        g.add(wall);
+    });
+
+    walls.forEach(({ w, d, x, z }) => {
+        const len = Math.max(w, d);
+        const count = Math.floor(len / 3);
+        const isX = w > d;
+        for (let i = 0; i < count; i++) {
+            const t = (i + 0.5) / count - 0.5;
+            const b = new THREE.Mesh(
+                new THREE.BoxGeometry(isX ? 1.5 : 1.2, 2, isX ? 1.2 : 1.5),
+                stoneMat
+            );
+            const ox = isX ? t * w : 0;
+            const oz = isX ? 0 : t * d;
+            b.position.set(x + ox, wallHeight + 1, z + oz);
+            g.add(b);
         }
-        // نجوم أكبر متوهجة
-        for(let i = 0; i < 12; i++){
-            const x = Math.random() * 1024;
-            const y = Math.random() * 512;
-            const r = 6 + Math.random() * 10;
-            const rg = ctx.createRadialGradient(x, y, 0, x, y, r);
-            rg.addColorStop(0, 'rgba(200,220,255,0.7)');
-            rg.addColorStop(1, 'rgba(200,220,255,0)');
-            ctx.fillStyle = rg;
-            ctx.fillRect(x - r, y - r, r * 2, r * 2);
-        }
-    } else if(type === 'hall'){
-        const grad = ctx.createLinearGradient(0, 0, 0, 512);
-        grad.addColorStop(0, '#0a0505');
-        grad.addColorStop(0.4, '#1a0e08');
-        grad.addColorStop(0.7, '#2a1a10');
-        grad.addColorStop(1, '#0a0508');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, 1024, 512);
-        // نوافذ متوهجة
-        for(let i = 0; i < 10; i++){
-            const x = 80 + Math.random() * 864;
-            const y = 120 + Math.random() * 280;
-            const r = 30 + Math.random() * 50;
-            const rg = ctx.createRadialGradient(x, y, 0, x, y, r);
-            rg.addColorStop(0, 'rgba(255,180,80,0.6)');
-            rg.addColorStop(0.5, 'rgba(255,140,40,0.2)');
-            rg.addColorStop(1, 'rgba(255,180,80,0)');
-            ctx.fillStyle = rg;
-            ctx.fillRect(x - r, y - r, r * 2, r * 2);
-        }
-        // أعمدة ضوئية رأسية خفيفة
-        for(let i = 0; i < 6; i++){
-            const x = 60 + i * 180;
-            const cg = ctx.createLinearGradient(x - 15, 0, x + 15, 0);
-            cg.addColorStop(0, 'rgba(255,200,120,0)');
-            cg.addColorStop(0.5, 'rgba(255,200,120,0.10)');
-            cg.addColorStop(1, 'rgba(255,200,120,0)');
-            ctx.fillStyle = cg;
-            ctx.fillRect(x - 15, 0, 30, 512);
-        }
-    } else if(type === 'mist'){
-        const grad = ctx.createLinearGradient(0, 0, 0, 512);
-        grad.addColorStop(0, '#05001a');
-        grad.addColorStop(0.5, '#1a0a30');
-        grad.addColorStop(1, '#2a0a4a');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, 1024, 512);
-        // سحب ضباب بنفسجية
-        for(let i = 0; i < 35; i++){
-            const x = Math.random() * 1024;
-            const y = Math.random() * 512;
-            const r = 60 + Math.random() * 140;
-            const rg = ctx.createRadialGradient(x, y, 0, x, y, r);
-            rg.addColorStop(0, 'rgba(170,90,230,0.25)');
-            rg.addColorStop(0.6, 'rgba(140,60,200,0.10)');
-            rg.addColorStop(1, 'rgba(160,80,220,0)');
-            ctx.fillStyle = rg;
-            ctx.fillRect(x - r, y - r, r * 2, r * 2);
-        }
-        // نجوم صغيرة بنفسجية
-        for(let i = 0; i < 80; i++){
-            const x = Math.random() * 1024;
-            const y = Math.random() * 512;
-            const r = Math.random() * 1.2;
-            ctx.fillStyle = `rgba(220,180,255,${Math.random() * 0.7 + 0.2})`;
-            ctx.beginPath();
-            ctx.arc(x, y, r, 0, Math.PI * 2);
-            ctx.fill();
+    });
+
+    const towerPositions = [
+        [-wallDist, -wallDist], [wallDist, -wallDist],
+        [-wallDist, wallDist], [wallDist, wallDist]
+    ];
+    const torchTex = makeGlowSpriteTexture();
+    const torchMat = new THREE.SpriteMaterial({
+        map: torchTex,
+        color: 0xFFB860,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        opacity: 0.9
+    });
+
+    towerPositions.forEach(([x, z]) => {
+        const tower = new THREE.Mesh(new THREE.CylinderGeometry(4, 4.5, wallHeight + 6, 12), stoneDarkMat);
+        tower.position.set(x, (wallHeight + 6)/2, z);
+        g.add(tower);
+
+        const top = new THREE.Mesh(new THREE.CylinderGeometry(4.3, 4.3, 0.6, 12), goldMat);
+        top.position.set(x, wallHeight + 6, z);
+        g.add(top);
+
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(4.5, 6, 12), roofMat);
+        roof.position.set(x, wallHeight + 9.3, z);
+        g.add(roof);
+
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 4, 6), goldMat);
+        pole.position.set(x, wallHeight + 13, z);
+        g.add(pole);
+
+        const flag = new THREE.Mesh(new THREE.PlaneGeometry(2, 1.2), flagMat);
+        flag.position.set(x + 1.1, wallHeight + 14, z);
+        g.add(flag);
+
+        const torch = new THREE.Sprite(torchMat);
+        torch.position.set(x * 0.7, wallHeight - 2, z * 0.7);
+        torch.scale.set(4, 4, 1);
+        g.add(torch);
+    });
+
+    return g;
+}
+
+function buildForestBg() {
+    const g = new THREE.Group();
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: 0.95, metalness: 0 });
+    const leafMats = [
+        new THREE.MeshStandardMaterial({ color: 0x0e3a1e, roughness: 0.9, metalness: 0 }),
+        new THREE.MeshStandardMaterial({ color: 0x1a4a28, roughness: 0.9, metalness: 0 }),
+        new THREE.MeshStandardMaterial({ color: 0x0a2818, roughness: 0.9, metalness: 0 })
+    ];
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.95, metalness: 0.1 });
+
+    for (let i = 0; i < 18; i++) {
+        const angle = (i / 18) * Math.PI * 2 + Math.random() * 0.3;
+        const dist = 12 + Math.random() * 12;
+        const x = Math.cos(angle) * dist;
+        const z = Math.sin(angle) * dist;
+        const scale = 0.8 + Math.random() * 0.7;
+        const trunkH = 6 * scale;
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.5 * scale, 0.9 * scale, trunkH, 7), trunkMat);
+        trunk.position.set(x, trunkH/2, z);
+        g.add(trunk);
+        const leafMat = leafMats[i % 3];
+        for (let j = 0; j < 3; j++) {
+            const coneH = 3.5 * scale;
+            const coneR = (3.2 - j * 0.6) * scale;
+            const cone = new THREE.Mesh(new THREE.ConeGeometry(coneR, coneH, 8), leafMat);
+            cone.position.set(x, trunkH + j * coneH * 0.55 - 0.5, z);
+            g.add(cone);
         }
     }
 
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    return tex;
-}
+    for (let i = 0; i < 10; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 10 + Math.random() * 12;
+        const x = Math.cos(angle) * dist;
+        const z = Math.sin(angle) * dist;
+        const size = 0.5 + Math.random() * 0.8;
+        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(size, 0), rockMat);
+        rock.position.set(x, size * 0.5, z);
+        rock.rotation.set(Math.random(), Math.random(), Math.random());
+        g.add(rock);
+    }
 
-// ===== ADDED: نطاق ومواد خلفية المشهد =====
-let bgDome = null;
-let bgTextures = {};
-
-function createBoardBackgrounds(){
-    if(bgDome) return;
-    // قبة خلفية كبيرة حول المشهد
-    const domeGeo = new THREE.SphereGeometry(45, 32, 16);
-    const mat = new THREE.MeshBasicMaterial({
-        side: THREE.BackSide,
+    const fireflyMat = new THREE.SpriteMaterial({
+        map: makeGlowSpriteTexture(),
+        color: 0xAAFF66,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
         depthWrite: false,
+        opacity: 0.9
+    });
+    for (let i = 0; i < 30; i++) {
+        const ff = new THREE.Sprite(fireflyMat);
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 5 + Math.random() * 15;
+        ff.position.set(Math.cos(angle) * dist, 1 + Math.random() * 8, Math.sin(angle) * dist);
+        const s = 0.3 + Math.random() * 0.4;
+        ff.scale.set(s, s, 1);
+        g.add(ff);
+    }
+
+    const moonMat = new THREE.SpriteMaterial({
+        map: makeGlowSpriteTexture(),
+        color: 0xE8F0FF,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        opacity: 0.6,
         fog: false
     });
-    bgDome = new THREE.Mesh(domeGeo, mat);
-    bgDome.position.y = 3;
-    scene.add(bgDome);
+    const moon = new THREE.Sprite(moonMat);
+    moon.position.set(-25, 30, -30);
+    moon.scale.set(18, 18, 1);
+    g.add(moon);
 
-    // توليد النسيج الثلاثة مسبقاً
-    Object.keys(BOARD_BACKGROUNDS).forEach(type => {
-        bgTextures[type] = makeBgTexture(type);
-    });
+    return g;
 }
 
-function applyBoardBackground(type){
-    if(!bgDome || !BOARD_BACKGROUNDS[type]) return;
-    const cfg = BOARD_BACKGROUNDS[type];
-    if(bgTextures[type]){
-        bgDome.material.map = bgTextures[type];
-        bgDome.material.needsUpdate = true;
+function buildGiantBg() {
+    const g = new THREE.Group();
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0x3a2818, roughness: 0.85, metalness: 0.05 });
+    const skinDarkMat = new THREE.MeshStandardMaterial({ color: 0x1a1008, roughness: 0.9, metalness: 0.05 });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xFFD060 });
+    const browMat = new THREE.MeshStandardMaterial({ color: 0x1a0a04, roughness: 0.9 });
+
+    // رأس العملاق أسفل الرقعة مباشرة
+    const head = new THREE.Mesh(new THREE.SphereGeometry(2.5, 24, 16), skinMat);
+    head.position.set(0, -3.4, 0);
+    head.scale.set(1.2, 1.0, 1.1);
+    g.add(head);
+
+    // العينان المتوهجتان
+    const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 12), eyeMat);
+    eyeL.position.set(-0.8, -3.2, 2.2);
+    g.add(eyeL);
+    const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 12), eyeMat);
+    eyeR.position.set(0.8, -3.2, 2.2);
+    g.add(eyeR);
+
+    const eyeGlowTex = makeGlowSpriteTexture();
+    const eyeGlowMat = new THREE.SpriteMaterial({
+        map: eyeGlowTex, color: 0xFFB040, transparent: true,
+        blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9, fog: false
+    });
+    const glowL = new THREE.Sprite(eyeGlowMat);
+    glowL.position.set(-0.8, -3.2, 2.4); glowL.scale.set(1.8, 1.8, 1);
+    g.add(glowL);
+    const glowR = new THREE.Sprite(eyeGlowMat);
+    glowR.position.set(0.8, -3.2, 2.4); glowR.scale.set(1.8, 1.8, 1);
+    g.add(glowR);
+
+    // الحواجب
+    const browL = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.25, 0.3), browMat);
+    browL.position.set(-0.8, -2.7, 2.2); browL.rotation.z = -0.2; g.add(browL);
+    const browR = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.25, 0.3), browMat);
+    browR.position.set(0.8, -2.7, 2.2); browR.rotation.z = 0.2; g.add(browR);
+
+    // الأنف
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 12), skinDarkMat);
+    nose.position.set(0, -3.6, 2.3); nose.scale.set(1, 1.3, 1.2); g.add(nose);
+
+    // الفم
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.2, 0.3), browMat);
+    mouth.position.set(0, -4.3, 2.2); g.add(mouth);
+
+    // الرقبة
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.8, 2, 16), skinMat);
+    neck.position.set(0, -6.3, 0); g.add(neck);
+
+    // الأكتاف العريضة
+    const shoulders = new THREE.Mesh(new THREE.CapsuleGeometry(3.5, 6, 8, 20), skinMat);
+    shoulders.position.set(0, -9, 0);
+    shoulders.rotation.z = Math.PI / 2;
+    shoulders.scale.set(1, 1, 1.4);
+    g.add(shoulders);
+
+    // الجسم
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(4, 5, 8, 16), skinMat);
+    body.position.set(0, -14, 0); g.add(body);
+
+    // ذراعان ترفعان الرقعة
+    function makeArm(start, end, radius) {
+        const dir = new THREE.Vector3().subVectors(end, start);
+        const len = dir.length();
+        const geo = new THREE.CylinderGeometry(radius * 0.8, radius, len, 12);
+        const mesh = new THREE.Mesh(geo, skinMat);
+        mesh.position.copy(start).add(end).multiplyScalar(0.5);
+        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+        return mesh;
     }
+    g.add(makeArm(new THREE.Vector3(-6, -9, 0), new THREE.Vector3(-4.5, -1.2, 3.5), 1.1));
+    g.add(makeArm(new THREE.Vector3(6, -9, 0), new THREE.Vector3(4.5, -1.2, 3.5), 1.1));
+
+    // اليدان
+    const handL = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 10), skinMat);
+    handL.position.set(-4.5, -1.2, 3.5); handL.scale.set(1.2, 0.6, 1.2); g.add(handL);
+    const handR = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 10), skinMat);
+    handR.position.set(4.5, -1.2, 3.5); handR.scale.set(1.2, 0.6, 1.2); g.add(handR);
+
+    // الأذنان
+    const earL = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), skinMat);
+    earL.position.set(-3, -3.3, 0); earL.scale.set(0.6, 1, 0.8); g.add(earL);
+    const earR = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), skinMat);
+    earR.position.set(3, -3.3, 0); earR.scale.set(0.6, 1, 0.8); g.add(earR);
+
+    // إضاءة دافئة خفيفة على وجه العملاق
+    const faceLight = new THREE.PointLight(0xFFB060, 2.0, 12);
+    faceLight.position.set(0, -4, 5);
+    g.add(faceLight);
+
+    // سحب أسفل العملاق
+    const cloudMat = new THREE.SpriteMaterial({
+        map: makeGlowSpriteTexture(), color: 0x4a6a9a, transparent: true,
+        blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.3, fog: false
+    });
+    for (let i = 0; i < 8; i++) {
+        const cloud = new THREE.Sprite(cloudMat);
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 15 + Math.random() * 20;
+        cloud.position.set(Math.cos(angle) * dist, -15 - Math.random() * 5, Math.sin(angle) * dist);
+        const s = 15 + Math.random() * 15;
+        cloud.scale.set(s, s * 0.4, 1);
+        g.add(cloud);
+    }
+
+    return g;
+}
+
+function clearBoardBg() {
+    if (!boardBgGroup) return;
+    scene.remove(boardBgGroup);
+    const disposedGeos = new Set();
+    const disposedMats = new Set();
+    boardBgGroup.traverse(obj => {
+        if (obj.geometry && !disposedGeos.has(obj.geometry)) {
+            obj.geometry.dispose();
+            disposedGeos.add(obj.geometry);
+        }
+        if (obj.material) {
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            mats.forEach(m => {
+                if (!disposedMats.has(m)) {
+                    if (m.map) m.map.dispose();
+                    m.dispose();
+                    disposedMats.add(m);
+                }
+            });
+        }
+    });
+    boardBgGroup = null;
+}
+
+function applyBoardBackground(type) {
+    const cfg = BOARD_BACKGROUNDS[type];
+    if (!cfg || !scene) return;
+
+    clearBoardBg();
+
     scene.background = new THREE.Color(cfg.bg);
     scene.fog = new THREE.Fog(cfg.fog, cfg.fogNear, cfg.fogFar);
+
+    if (floorMesh) floorMesh.visible = (type !== 'giant');
+
+    boardBgGroup = new THREE.Group();
+
+    // قبة السماء
+    const skyTex = makeSkyDomeTexture(cfg.sky[0], cfg.sky[1]);
+    const skyGeo = new THREE.SphereGeometry(55, 32, 16);
+    const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, depthWrite: false, fog: false });
+    const sky = new THREE.Mesh(skyGeo, skyMat);
+    sky.position.y = 5;
+    boardBgGroup.add(sky);
+
+    if (type === 'castle') boardBgGroup.add(buildCastleBg());
+    else if (type === 'forest') boardBgGroup.add(buildForestBg());
+    else if (type === 'giant') boardBgGroup.add(buildGiantBg());
+
+    scene.add(boardBgGroup);
+    _lastAppliedBg = type;
 }
 
 function renderBackgroundButtons(){
@@ -612,10 +821,9 @@ window.setBoardBackground = function(type){
     showToast(`🖼️ تم اختيار: ${BOARD_BACKGROUNDS[type].name}`);
     AudioEngine.sfxClick();
 };
-// ===== END ADDED =====
 
 /* =========================================================
-   نظام الصوت
+   نظام الصوت (كما هو)
    ========================================================= */
 
 function midiToFreq(midi){ return 440 * Math.pow(2, (midi - 69) / 12); }
@@ -864,7 +1072,6 @@ const AudioEngine = {
         const chord = MUSIC_CHORDS[chordIdx];
         const pattern = MUSIC_PATTERN[stepInChord];
         if (!chord || !pattern) return;
-
         pattern.forEach(noteIdx => {
             if (noteIdx < chord.length) {
                 const midi = chord[noteIdx];
@@ -1012,8 +1219,10 @@ function loadPlayerData(){
         }catch(e){ console.error("Load error", e); }
     }
     currentCustom = { ...DEFAULT_CUSTOM, ...playerData.customization };
-    // ضمان وجود boardBg
-    if(!currentCustom.boardBg) currentCustom.boardBg = 'cosmic';
+    // ضمان صلاحية boardBg
+    if(!currentCustom.boardBg || !BOARD_BACKGROUNDS[currentCustom.boardBg]) {
+        currentCustom.boardBg = 'castle';
+    }
     updateUI();
     renderDailyRewards();
     renderAchievements();
@@ -1022,7 +1231,7 @@ function loadPlayerData(){
     renderPresets();
     renderColorPickers();
     renderCameraButtons();
-    renderBackgroundButtons(); // ===== ADDED =====
+    renderBackgroundButtons();
     syncSettingsUI();
     applyCustomization(currentCustom, false);
     AudioEngine.updateVolumes();
@@ -1064,7 +1273,7 @@ window.openModal = function(id){
     if(id==='achievements') renderAchievements();
     if(id==='missions') renderMissions();
     if(id==='chest') updateChestTimer();
-    if(id==='customization'){ renderPresets(); renderColorPickers(); renderCameraButtons(); renderBackgroundButtons(); } // ===== MODIFIED =====
+    if(id==='customization'){ renderPresets(); renderColorPickers(); renderCameraButtons(); renderBackgroundButtons(); }
     if(id==='settings'){ syncSettingsUI(); }
     AudioEngine.sfxClick();
 };
@@ -1087,7 +1296,13 @@ function renderDailyRewards(){
     if(!grid) return;
     grid.innerHTML = '';
     const today = new Date().toDateString();
-    const canClaim = playerData.lastDailyClaim !== today;
+    let canClaim = playerData.lastDailyClaim !== today;
+
+    if (playerData.dailyStreak >= DAILY_REWARDS.length && canClaim) {
+        playerData.dailyStreak = 0;
+        savePlayerData();
+    }
+
     DAILY_REWARDS.forEach((rw, i) => {
         const claimed = i < playerData.dailyStreak;
         const current = i === playerData.dailyStreak && canClaim;
@@ -1255,6 +1470,7 @@ function initGame3D(){
     floor.rotation.x = -Math.PI/2; floor.position.y = -.85;
     floor.receiveShadow = true;
     scene.add(floor);
+    floorMesh = floor;
 
     sceneMaterials.base = new THREE.MeshStandardMaterial({ color: 0x141519, roughness: .55, metalness: .3 });
     const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(9.8, .9, 9.8), sceneMaterials.base);
@@ -1321,10 +1537,6 @@ function initGame3D(){
     board = new THREE.Group();
     pieces = new THREE.Group();
     scene.add(board); scene.add(pieces);
-
-    // ===== ADDED: إنشاء خلفيات الرقعة =====
-    createBoardBackgrounds();
-    // ===== END ADDED =====
 
     makeBoard();
     applyCustomization(currentCustom, false);
@@ -1404,9 +1616,31 @@ function chessPiece(type, color){
     return g;
 }
 
+function disposePiecesGroup(){
+    if(!pieces) return;
+    const seenGeos = new Set();
+    const seenMats = new Set();
+    pieces.traverse(obj => {
+        if(obj.geometry && !seenGeos.has(obj.geometry)){
+            obj.geometry.dispose();
+            seenGeos.add(obj.geometry);
+        }
+        if(obj.material){
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            mats.forEach(m => {
+                if(seenMats.has(m)) return;
+                if(m.map) m.map.dispose();
+                m.dispose();
+                seenMats.add(m);
+            });
+        }
+    });
+    pieces.clear();
+}
+
 function draw(){
     if(!pieces) return;
-    pieces.clear();
+    disposePiecesGroup();
     const state = chess.board();
     for(let r=0;r<8;r++){
         for(let f=0;f<8;f++){
@@ -1531,7 +1765,7 @@ window.resetCustomization = function(){
     savePlayerData();
     renderPresets();
     renderColorPickers();
-    renderBackgroundButtons(); // ===== ADDED =====
+    renderBackgroundButtons();
     showToast('↺ تم استعادة الألوان الافتراضية');
 };
 
@@ -1542,7 +1776,6 @@ function applyCustomization(cfg, animate){
     squares.forEach(s => {
         s.material.color.set(s.userData.isDark ? cfg.darkSquare : cfg.lightSquare);
     });
-    if(sceneMaterials.frame) sceneMaterials.frame.color.set(cfg.frame);
     if(sceneMaterials.rail) sceneMaterials.rail.color.set(cfg.frame);
     if(sceneMaterials.railTop) sceneMaterials.railTop.color.set(cfg.accent);
     if(sceneMaterials.knob) sceneMaterials.knob.color.set(cfg.accent);
@@ -1559,9 +1792,7 @@ function applyCustomization(cfg, animate){
         if(el) el.value = cfg[key];
     });
 
-    // ===== ADDED: تطبيق خلفية الرقعة =====
-    if(cfg.boardBg) applyBoardBackground(cfg.boardBg);
-    // ===== END ADDED =====
+    if(cfg.boardBg && cfg.boardBg !== _lastAppliedBg) applyBoardBackground(cfg.boardBg);
 }
 
 window.setCamera = function(preset){
@@ -1806,12 +2037,13 @@ window.backMenu = function(){
 
 window.newGame = function(){
     AudioEngine.sfxClick();
+    gameStarted = true;
+    gameOverHandled = false;
     chess.reset();
     snapshots = [];
     selected = null;
     pendingPromotion = null;
     thinking = false;
-    gameOverHandled = false;
     playerCaptures = 0;
     const promo = document.getElementById("promotion");
     if(promo) promo.style.display = "none";
@@ -1841,6 +2073,14 @@ window.promote = function(piece){
     document.getElementById("promotion").style.display = "none";
     saveMove();
     executePlayerMove(from, to, piece);
+};
+
+window.cancelPromotion = function(){
+    pendingPromotion = null;
+    document.getElementById("promotion").style.display = "none";
+    selected = null;
+    if(gameInitialized) resetColors();
+    AudioEngine.sfxClick();
 };
 
 function onResize(){
@@ -1882,8 +2122,10 @@ updateStatus = function(){
         gameOverHandled = true;
         if(chess.isCheckmate()){
             AudioEngine.sfxCheckmate();
+            const expectedFen = chess.fen();
             setTimeout(() => {
                 if(!gameStarted) return;
+                if(chess.fen() !== expectedFen) return;
                 if(chess.turn() === 'b'){
                     AudioEngine.sfxWin();
                     updateMissionProgress('win1', 1);
