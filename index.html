@@ -117,6 +117,8 @@
     .back-btn{background:linear-gradient(180deg,var(--charcoal-light),var(--charcoal));border:1.5px solid var(--champagne-dark);color:var(--champagne);padding:7px 12px;border-radius:20px;font-family:var(--font-main);font-weight:800;font-size:12px;cursor:pointer}
     .game-title{color:var(--champagne);font-weight:900;font-size:14px;text-shadow:0 2px 4px #000;white-space:nowrap}
     .game-level-select{background:rgba(10,15,25,.85);border:1.5px solid var(--champagne-dark);border-radius:20px;color:var(--champagne);padding:6px 8px;font-family:var(--font-main);font-weight:800;font-size:11px;cursor:pointer}
+    .game-settings-btn{width:34px!important;height:34px!important;padding:0!important;border-radius:50%!important;display:flex!important;justify-content:center!important;align-items:center!important;font-size:16px!important;flex-shrink:0}
+    .game-settings-btn:active{transform:scale(.9)}
     #game{flex:1;width:100%;min-height:0;touch-action:none;overflow:hidden;position:relative}
     #game canvas{display:block}
     .game-controls{padding:10px 12px 14px;background:linear-gradient(0deg,rgba(10,15,25,.92),transparent);border-top:1px solid rgba(201,169,106,.25)}
@@ -273,7 +275,7 @@
         <button class="back-btn" onclick="backMenu()">← رجوع</button>
         <div class="game-title">♟️ MONSTER CHESS</div>
         <div style="display:flex;gap:5px;align-items:center;">
-            <button class="back-btn" onclick="openModal('customization')">🎨</button>
+            <button class="back-btn game-settings-btn" onclick="openModal('customization')">🎨</button>
             <select class="game-level-select" id="level">
                 <option value="easy">سهل</option>
                 <option value="medium">متوسط</option>
