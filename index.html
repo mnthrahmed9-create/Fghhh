@@ -461,13 +461,11 @@ try {
 } catch(err) {
     console.warn('[module] فشل التحميل، محاولة UMD:', err);
     if (window.THREE && window.Chess) {
-        THREE = window.THREE;
-        Chess = window.Chess;
+        THREE = window.THREE; Chess = window.Chess;
         EffectComposer = null; RenderPass = null; UnrealBloomPass = null; OutputPass = null;
     } else {
         await new Promise(res => window.addEventListener('libsReady', res, { once: true }));
-        THREE = window.THREE;
-        Chess = window.Chess;
+        THREE = window.THREE; Chess = window.Chess;
         EffectComposer = null; RenderPass = null; UnrealBloomPass = null; OutputPass = null;
     }
 }
@@ -475,10 +473,10 @@ try {
 // ============ الإعدادات الافتراضية ============
 const DEFAULT_SETTINGS = { sound: true, music: true, soundVolume: 0.70, musicVolume: 0.30 };
 const DEFAULT_CUSTOM = {
-    lightSquare:'#E8DEC8', darkSquare:'#1E2A3D',
-    frame:'#2A2C33', accent:'#C9A96A',
-    base:'#141519', lightColor:'#FFF0D0',
-    boardBg:'forest' // ✅ الغابة هي الافتراضية الآن
+    lightSquare:'#C9A96A', darkSquare:'#0F0F14',
+    frame:'#1A1A1E', accent:'#D4AF37',
+    base:'#0A0A0F', lightColor:'#FFF0D0',
+    boardBg:'forest'
 };
 
 let currentCustom = { ...DEFAULT_CUSTOM };
@@ -487,10 +485,460 @@ let playerData = {
     settings: { ...DEFAULT_SETTINGS }
 };
 
+// حجم الرقعة — قابل للتعديل من هنا
+const BOARD_SCALE = 1;
+
 // =========================================================
-// [تم دمج BoardModule هنا]
+// [MonsterBoard — الرقعة الاحترافية الثلاثية الأبعاد]
+// =========================================================
+class MonsterBoard {
+    constructor(options = {}) {
+        this.config = this._mergeConfig(options);
+        this.group = new THREE.Group();
+        this.group.name = 'MonsterBoard';
+        this.squares = [];
+        this.lights = [];
+        this.torches = [];
+        this.crystals = [];
+        this.animated = [];
+        this.elapsed = 0;
+        this._geo = {};
+        this._mat = {};
+        this._build();
+    }
+    _mergeConfig(o) {
+        const D = {
+            size: 1, baseThickness: 0.6, frameThickness: 0.45, frameHeight: 0.35,
+            lightSquareColor: 0xC9A96A, darkSquareColor: 0x0F0F14,
+            frameColor: 0x1A1A1E, accentColor: 0xD4AF37, baseColor: 0x0A0A0F,
+            runeColor: 0x66CCFF, crystalColor: 0x88AAFF, torchColor: 0xFF8844,
+            includeLights: true, ambientIntensity: 0.85, hemiIntensity: 0.65,
+            sunIntensity: 2.8, sunColor: 0xFFF0D0, sunPosition: [8, 15, 6],
+            shadowMapSize: 2048, toneMappingExposure: 1.15,
+            decor: { pillars:true, gargoyles:true, dragons:true, skulls:true,
+                     crystals:true, torches:true, runes:true }
+        };
+        const cfg = { ...D, ...o };
+        cfg.decor = { ...D.decor, ...(o.decor || {}) };
+        return cfg;
+    }
+    _build() {
+        const C = this.config, S = C.size;
+        this._buildBase(S);
+        this._buildTiles(S);
+        this._buildFrame(S);
+        if (C.includeLights) this._buildLights();
+        if (C.decor.pillars)  this._buildPillars(S);
+        if (C.decor.gargoyles) this._buildGargoyles(S);
+        if (C.decor.dragons)  this._buildDragons(S);
+        if (C.decor.skulls)   this._buildSkulls(S);
+        if (C.decor.crystals) this._buildCrystals(S);
+        if (C.decor.torches)  this._buildTorches(S);
+        if (C.decor.runes)    this._buildRuneCircle(S);
+    }
+    _buildBase(S) {
+        const C = this.config;
+        const halfBoard = 4 * S;
+        const baseSize = halfBoard * 2 + 1.4;
+        const baseMat = new THREE.MeshStandardMaterial({ color: C.baseColor, roughness: 0.55, metalness: 0.35 });
+        const base = new THREE.Mesh(new THREE.BoxGeometry(baseSize, C.baseThickness, baseSize), baseMat);
+        base.position.y = -C.baseThickness / 2;
+        base.castShadow = true; base.receiveShadow = true;
+        this.group.add(base); this._mat.base = baseMat;
+        const trimMat = new THREE.MeshStandardMaterial({
+            color: C.accentColor, roughness: 0.32, metalness: 0.88,
+            emissive: C.accentColor, emissiveIntensity: 0.08
+        });
+        const trim = new THREE.Mesh(new THREE.BoxGeometry(baseSize + 0.04, 0.07, baseSize + 0.04), trimMat);
+        trim.position.y = -0.02; trim.castShadow = true;
+        this.group.add(trim); this._mat.baseTrim = trimMat;
+        const surfaceMat = new THREE.MeshStandardMaterial({ color: 0x05060A, roughness: 0.85, metalness: 0.15 });
+        const surface = new THREE.Mesh(new THREE.BoxGeometry(halfBoard * 2 + 0.9, 0.09, halfBoard * 2 + 0.9), surfaceMat);
+        surface.position.y = 0.045; surface.receiveShadow = true;
+        this.group.add(surface);
+    }
+    _buildTiles(S) {
+        const C = this.config;
+        const tileSize = S * 0.97, tileH = 0.16;
+        const geo = new THREE.BoxGeometry(tileSize, tileH, tileSize);
+        const lightMat = new THREE.MeshStandardMaterial({
+            color: C.lightSquareColor, roughness: 0.45, metalness: 0.35,
+            emissive: C.lightSquareColor, emissiveIntensity: 0.05
+        });
+        const darkMat = new THREE.MeshStandardMaterial({
+            color: C.darkSquareColor, roughness: 0.65, metalness: 0.25
+        });
+        const files = 'abcdefgh';
+        for (let r = 0; r < 8; r++) {
+            for (let f = 0; f < 8; f++) {
+                const isDark = (r + f) % 2 === 1;
+                const mesh = new THREE.Mesh(geo, isDark ? darkMat : lightMat);
+                mesh.position.set((f - 3.5) * S, tileH / 2 + 0.09, (r - 3.5) * S);
+                mesh.receiveShadow = true;
+                mesh.userData.squareName = files[f] + (8 - r);
+                mesh.userData.file = f;
+                mesh.userData.rank = r;
+                mesh.userData.isDark = isDark;
+                this.group.add(mesh);
+                this.squares.push({
+                    mesh, squareName: mesh.userData.squareName,
+                    file: f, rank: r, isDark
+                });
+            }
+        }
+        this._geo.tile = geo;
+        this._mat.lightTile = lightMat;
+        this._mat.darkTile = darkMat;
+    }
+    _buildFrame(S) {
+        const C = this.config;
+        const half = 4 * S, thick = C.frameThickness, h = C.frameHeight;
+        const railMat = new THREE.MeshStandardMaterial({ color: C.frameColor, roughness: 0.4, metalness: 0.55 });
+        const accentMat = new THREE.MeshStandardMaterial({
+            color: C.accentColor, roughness: 0.28, metalness: 0.92,
+            emissive: C.accentColor, emissiveIntensity: 0.1
+        });
+        this._mat.rail = railMat;
+        this._mat.accent = accentMat;
+        const rails = [
+            { w: half * 2 + thick * 2, d: thick, x: 0, z: -half - thick / 2 },
+            { w: half * 2 + thick * 2, d: thick, x: 0, z:  half + thick / 2 },
+            { w: thick, d: half * 2, x: -half - thick / 2, z: 0 },
+            { w: thick, d: half * 2, x:  half + thick / 2, z: 0 }
+        ];
+        rails.forEach(r => {
+            const rail = new THREE.Mesh(new THREE.BoxGeometry(r.w, h, r.d), railMat);
+            rail.position.set(r.x, h / 2 + 0.13, r.z);
+            rail.castShadow = true; rail.receiveShadow = true;
+            this.group.add(rail);
+            const trim = new THREE.Mesh(new THREE.BoxGeometry(r.w + 0.04, 0.06, r.d + 0.04), accentMat);
+            trim.position.set(r.x, h + 0.15, r.z); trim.castShadow = true;
+            this.group.add(trim);
+        });
+        const corners = [
+            [-half - thick/2, -half - thick/2],[ half + thick/2, -half - thick/2],
+            [-half - thick/2,  half + thick/2],[ half + thick/2,  half + thick/2]
+        ];
+        const postGeo = new THREE.CylinderGeometry(0.15, 0.18, 0.55, 10);
+        const knobGeo = new THREE.SphereGeometry(0.15, 14, 10);
+        corners.forEach(([x, z]) => {
+            const post = new THREE.Mesh(postGeo, railMat);
+            post.position.set(x, 0.42, z); post.castShadow = true; this.group.add(post);
+            const knob = new THREE.Mesh(knobGeo, accentMat);
+            knob.position.set(x, 0.78, z); knob.castShadow = true; this.group.add(knob);
+        });
+        const studGeo = new THREE.SphereGeometry(0.055, 8, 6);
+        for (let i = -3; i <= 3; i++) {
+            if (i === 0) continue;
+            [[i, 0.48, -half - thick/2],[i, 0.48, half + thick/2],
+             [-half - thick/2, 0.48, i],[half + thick/2, 0.48, i]].forEach(([x,y,z]) => {
+                const stud = new THREE.Mesh(studGeo, accentMat);
+                stud.position.set(x, y, z); this.group.add(stud);
+            });
+        }
+    }
+    _buildLights() {
+        const C = this.config;
+        const hemi = new THREE.HemisphereLight(0x8899CC, 0x080810, C.hemiIntensity);
+        hemi.position.set(0, 20, 0); this.group.add(hemi); this.lights.push(hemi);
+        const sun = new THREE.DirectionalLight(C.sunColor, C.sunIntensity);
+        sun.position.set(...C.sunPosition);
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(C.shadowMapSize, C.shadowMapSize);
+        sun.shadow.camera.left = -12; sun.shadow.camera.right = 12;
+        sun.shadow.camera.top = 12; sun.shadow.camera.bottom = -12;
+        sun.shadow.camera.near = 1; sun.shadow.camera.far = 40;
+        sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
+        this.group.add(sun); this.group.add(sun.target); this.lights.push(sun);
+        const fill = new THREE.DirectionalLight(0x6688CC, 0.6);
+        fill.position.set(-6, 9, -8); this.group.add(fill); this.lights.push(fill);
+        const ambient = new THREE.AmbientLight(0x334466, C.ambientIntensity);
+        this.group.add(ambient); this.lights.push(ambient);
+    }
+    _buildPillars(S) {
+        const C = this.config;
+        const off = 4 * S + C.frameThickness + 0.35;
+        const stoneMat = new THREE.MeshStandardMaterial({ color: 0x2A2C33, roughness: 0.9, metalness: 0.12 });
+        const goldMat = new THREE.MeshStandardMaterial({
+            color: C.accentColor, roughness: 0.3, metalness: 0.9,
+            emissive: C.accentColor, emissiveIntensity: 0.15
+        });
+        [[-off,-off],[off,-off],[-off,off],[off,off]].forEach(([x,z]) => {
+            const g = new THREE.Group();
+            g.position.set(x, 0, z);
+            const base = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.28,0.7), stoneMat);
+            base.position.y = 0.14; base.castShadow = true; base.receiveShadow = true; g.add(base);
+            const baseTrim = new THREE.Mesh(new THREE.BoxGeometry(0.78,0.06,0.78), goldMat);
+            baseTrim.position.y = 0.31; baseTrim.castShadow = true; g.add(baseTrim);
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.25,1.9,14), stoneMat);
+            body.position.y = 1.28; body.castShadow = true; body.receiveShadow = true; g.add(body);
+            const midRing = new THREE.Mesh(new THREE.TorusGeometry(0.22,0.035,8,16), goldMat);
+            midRing.position.y = 1.28; midRing.rotation.x = Math.PI / 2; midRing.castShadow = true; g.add(midRing);
+            const capital = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.22,0.18,14), stoneMat);
+            capital.position.y = 2.3; capital.castShadow = true; g.add(capital);
+            const capTrim = new THREE.Mesh(new THREE.BoxGeometry(0.72,0.06,0.72), goldMat);
+            capTrim.position.y = 2.42; capTrim.castShadow = true; g.add(capTrim);
+            const orb = new THREE.Mesh(new THREE.SphereGeometry(0.17,14,10), goldMat);
+            orb.position.y = 2.62; orb.castShadow = true; g.add(orb);
+            const glow = new THREE.PointLight(C.accentColor, 0.5, 3, 2);
+            glow.position.y = 2.62; g.add(glow);
+            this.group.add(g);
+        });
+    }
+    _buildGargoyles(S) {
+        const C = this.config;
+        const off = 4 * S + C.frameThickness + 1.4;
+        const stoneMat = new THREE.MeshStandardMaterial({ color: 0x3A3E45, roughness: 0.95, metalness: 0.05 });
+        const darkMat = new THREE.MeshStandardMaterial({ color: 0x1A1C20, roughness: 0.9, metalness: 0.1 });
+        const eyeMat = new THREE.MeshStandardMaterial({ color: 0xFF4422, emissive: 0xFF4422, emissiveIntensity: 2.2, roughness: 0.3 });
+        const wingMat = new THREE.MeshStandardMaterial({ color: 0x252830, roughness: 0.92, side: THREE.DoubleSide });
+        [{x:-off,z:off,fy:0.25},{x:off,z:off,fy:-0.25}].forEach(p => {
+            const g = new THREE.Group();
+            g.position.set(p.x, 0, p.z); g.rotation.y = p.fy;
+            const ped = new THREE.Mesh(new THREE.BoxGeometry(0.95,0.5,0.95), stoneMat);
+            ped.position.y = 0.25; ped.castShadow = true; ped.receiveShadow = true; g.add(ped);
+            const body = new THREE.Mesh(new THREE.SphereGeometry(0.38,16,12), stoneMat);
+            body.scale.set(1,0.9,1.3); body.position.y = 0.88; body.castShadow = true; g.add(body);
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.24,14,12), stoneMat);
+            head.scale.set(1,0.9,1.15); head.position.set(0,1.28,0.32); head.castShadow = true; g.add(head);
+            const snout = new THREE.Mesh(new THREE.ConeGeometry(0.14,0.28,8), stoneMat);
+            snout.rotation.x = Math.PI/2; snout.position.set(0,1.22,0.58); snout.castShadow = true; g.add(snout);
+            const hornGeo = new THREE.ConeGeometry(0.055,0.22,6);
+            const hL = new THREE.Mesh(hornGeo, darkMat);
+            hL.position.set(-0.11,1.48,0.22); hL.rotation.z = 0.25; hL.castShadow = true; g.add(hL);
+            const hR = hL.clone(); hR.position.x = 0.11; hR.rotation.z = -0.25; g.add(hR);
+            const eyeGeo = new THREE.SphereGeometry(0.035,8,6);
+            const eL = new THREE.Mesh(eyeGeo, eyeMat); eL.position.set(-0.095,1.3,0.48); g.add(eL);
+            const eR = new THREE.Mesh(eyeGeo, eyeMat); eR.position.set(0.095,1.3,0.48); g.add(eR);
+            const wingGeo = new THREE.ConeGeometry(0.3,0.6,4);
+            const wL = new THREE.Mesh(wingGeo, wingMat);
+            wL.position.set(-0.32,1.05,-0.28); wL.rotation.z = 0.55; wL.rotation.x = 0.25;
+            wL.scale.set(0.28,1,1); wL.castShadow = true; g.add(wL);
+            const wR = wL.clone(); wR.position.x = 0.32; wR.rotation.z = -0.55; g.add(wR);
+            const eyeLight = new THREE.PointLight(0xFF4422, 0.35, 1.4, 2);
+            eyeLight.position.set(0,1.3,0.48); g.add(eyeLight);
+            this.group.add(g);
+            this.animated.push({type:'glow',material:eyeMat,base:2.2,amplitude:0.8,speed:2.0});
+        });
+    }
+    _buildDragons(S) {
+        const C = this.config;
+        const off = 4 * S + C.frameThickness + 1.6;
+        const stoneMat = new THREE.MeshStandardMaterial({ color: 0x2E3038, roughness: 0.9, metalness: 0.1 });
+        const goldMat = new THREE.MeshStandardMaterial({ color: C.accentColor, roughness: 0.3, metalness: 0.9, emissive: C.accentColor, emissiveIntensity: 0.35 });
+        const eyeMat = new THREE.MeshStandardMaterial({ color: 0xFFAA00, emissive: 0xFFAA00, emissiveIntensity: 2.6 });
+        const wingMat = new THREE.MeshStandardMaterial({ color: 0x1A1C20, roughness: 0.9, side: THREE.DoubleSide });
+        [{x:-off,z:-off,fy:-0.35},{x:off,z:-off,fy:0.35}].forEach(p => {
+            const g = new THREE.Group();
+            g.position.set(p.x, 0, p.z); g.rotation.y = p.fy; g.scale.setScalar(1.25);
+            const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.62,0.72,0.45,10), stoneMat);
+            ped.position.y = 0.225; ped.castShadow = true; ped.receiveShadow = true; g.add(ped);
+            const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.34,0.6,8,14), stoneMat);
+            body.position.y = 0.95; body.rotation.z = Math.PI/4; body.castShadow = true; g.add(body);
+            const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.2,0.55,12), stoneMat);
+            neck.position.set(0,1.45,0.32); neck.rotation.x = -0.35; neck.castShadow = true; g.add(neck);
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.26,0.46), stoneMat);
+            head.position.set(0,1.72,0.52); head.castShadow = true; g.add(head);
+            const snout = new THREE.Mesh(new THREE.BoxGeometry(0.22,0.18,0.26), stoneMat);
+            snout.position.set(0,1.68,0.78); snout.castShadow = true; g.add(snout);
+            const hornGeo = new THREE.ConeGeometry(0.06,0.32,6);
+            const hL = new THREE.Mesh(hornGeo, goldMat);
+            hL.position.set(-0.1,1.9,0.42); hL.rotation.z = 0.35; hL.castShadow = true; g.add(hL);
+            const hR = hL.clone(); hR.position.x = 0.1; hR.rotation.z = -0.35; g.add(hR);
+            const eyeGeo = new THREE.SphereGeometry(0.05,8,6);
+            const eL = new THREE.Mesh(eyeGeo, eyeMat); eL.position.set(-0.09,1.75,0.68); g.add(eL);
+            const eR = new THREE.Mesh(eyeGeo, eyeMat); eR.position.set(0.09,1.75,0.68); g.add(eR);
+            const wingGeo = new THREE.ConeGeometry(0.55,1.15,3);
+            const wL = new THREE.Mesh(wingGeo, wingMat);
+            wL.position.set(-0.42,1.35,0.05); wL.rotation.z = 1.15; wL.scale.set(0.12,1,1); wL.castShadow = true; g.add(wL);
+            const wR = wL.clone(); wR.position.x = 0.42; wR.rotation.z = -1.15; g.add(wR);
+            const tail = new THREE.Mesh(new THREE.ConeGeometry(0.1,0.7,8), stoneMat);
+            tail.position.set(0,0.62,-0.55); tail.rotation.x = Math.PI/3; tail.castShadow = true; g.add(tail);
+            const eyeLight = new THREE.PointLight(0xFFAA00, 0.45, 2, 2);
+            eyeLight.position.set(0,1.75,0.7); g.add(eyeLight);
+            this.group.add(g);
+            this.animated.push({type:'glow',material:eyeMat,base:2.6,amplitude:0.9,speed:2.4});
+        });
+    }
+    _buildSkulls(S) {
+        const C = this.config;
+        const off = 4 * S + C.frameThickness + 1.1;
+        const boneMat = new THREE.MeshStandardMaterial({ color: 0xD8CDBA, roughness: 0.7, metalness: 0.05 });
+        const socketMat = new THREE.MeshStandardMaterial({ color: 0x080303, roughness: 1.0 });
+        const stonePedMat = new THREE.MeshStandardMaterial({ color: 0x2A2C33, roughness: 0.9 });
+        const glowMat = new THREE.MeshBasicMaterial({ color: 0xFF2200, transparent: true, opacity: 0.8 });
+        [[0,-off],[0,off],[-off,0],[off,0]].forEach(([x,z]) => {
+            const g = new THREE.Group();
+            g.position.set(x,0,z);
+            const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.38,0.44,0.26,8), stonePedMat);
+            ped.position.y = 0.13; ped.castShadow = true; ped.receiveShadow = true; g.add(ped);
+            const dome = new THREE.Mesh(new THREE.SphereGeometry(0.24,16,12), boneMat);
+            dome.position.y = 0.42; dome.scale.set(1,0.95,1.1); dome.castShadow = true; g.add(dome);
+            const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.26,0.1,0.22), boneMat);
+            jaw.position.set(0,0.28,0.08); jaw.castShadow = true; g.add(jaw);
+            const eyeGeo = new THREE.SphereGeometry(0.075,10,8);
+            const eL = new THREE.Mesh(eyeGeo, socketMat); eL.position.set(-0.085,0.44,0.17); g.add(eL);
+            const eR = new THREE.Mesh(eyeGeo, socketMat); eR.position.set(0.085,0.44,0.17); g.add(eR);
+            const nose = new THREE.Mesh(new THREE.ConeGeometry(0.03,0.06,6), socketMat);
+            nose.rotation.x = Math.PI/2; nose.position.set(0,0.38,0.21); g.add(nose);
+            for (let i = 0; i < 4; i++) {
+                const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.016,0.045,6), boneMat);
+                tooth.position.set((i-1.5)*0.055, 0.35, 0.18); g.add(tooth);
+            }
+            const glowGeo = new THREE.SphereGeometry(0.028,6,5);
+            const gL = new THREE.Mesh(glowGeo, glowMat); gL.position.set(-0.085,0.44,0.2); g.add(gL);
+            const gR = new THREE.Mesh(glowGeo, glowMat); gR.position.set(0.085,0.44,0.2); g.add(gR);
+            this.group.add(g);
+            this.animated.push({type:'pulse',material:glowMat,base:0.7,amplitude:0.35,speed:3.5});
+        });
+    }
+    _buildCrystals(S) {
+        const C = this.config;
+        const off = 4 * S + C.frameThickness + 2.0;
+        const rockMat = new THREE.MeshStandardMaterial({ color: 0x15171C, roughness: 0.95, metalness: 0.1 });
+        const crystalMat = new THREE.MeshStandardMaterial({
+            color: C.crystalColor, emissive: C.crystalColor, emissiveIntensity: 1.3,
+            transparent: true, opacity: 0.92, roughness: 0.1, metalness: 0.5
+        });
+        [[-off,-off*0.55],[off,-off*0.55],[-off,off*0.55],[off,off*0.55],
+         [0,-off],[0,off],[-off,0],[off,0]].forEach(([x,z]) => {
+            const g = new THREE.Group();
+            g.position.set(x,0,z);
+            const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.32,0), rockMat);
+            rock.position.y = 0.1; rock.scale.set(1,0.55,1); rock.castShadow = true; rock.receiveShadow = true; g.add(rock);
+            const count = 3 + Math.floor(Math.random()*3);
+            for (let i = 0; i < count; i++) {
+                const h = 0.32 + Math.random()*0.45;
+                const crystal = new THREE.Mesh(new THREE.ConeGeometry(0.07+Math.random()*0.05, h, 6), crystalMat);
+                const ang = (i/count)*Math.PI*2 + Math.random()*0.6;
+                const rad = 0.04 + Math.random()*0.14;
+                crystal.position.set(Math.cos(ang)*rad, 0.2+h/2, Math.sin(ang)*rad);
+                crystal.rotation.z = (Math.random()-0.5)*0.28;
+                crystal.rotation.x = (Math.random()-0.5)*0.28;
+                crystal.castShadow = true; g.add(crystal);
+                this.crystals.push({mesh:crystal, baseY:crystal.position.y, phase:Math.random()*Math.PI*2});
+            }
+            const glow = new THREE.PointLight(C.crystalColor, 0.9, 2.5, 2);
+            glow.position.y = 0.5; g.add(glow);
+            this.group.add(g);
+        });
+    }
+    _buildTorches(S) {
+        const C = this.config;
+        const off = 4 * S + C.frameThickness + 1.7;
+        const woodMat = new THREE.MeshStandardMaterial({ color: 0x3A2415, roughness: 0.9, metalness: 0.05 });
+        const metalMat = new THREE.MeshStandardMaterial({ color: 0x2A2A30, roughness: 0.35, metalness: 0.85 });
+        const flameMat = new THREE.MeshBasicMaterial({ color: 0xFFAA33, transparent: true, opacity: 0.85, fog: false });
+        const coreMat = new THREE.MeshBasicMaterial({ color: 0xFFFF88, transparent: true, opacity: 1.0, fog: false });
+        [[-off,0],[off,0],[0,-off],[0,off]].forEach(([x,z]) => {
+            const g = new THREE.Group();
+            g.position.set(x,0,z);
+            const base = new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.22,0.1,10), metalMat);
+            base.position.y = 0.05; base.castShadow = true; g.add(base);
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.055,1.4,8), woodMat);
+            pole.position.y = 0.8; pole.castShadow = true; g.add(pole);
+            const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.09,0.18,12), metalMat);
+            bowl.position.y = 1.55; bowl.castShadow = true; g.add(bowl);
+            const flame = new THREE.Mesh(new THREE.ConeGeometry(0.13,0.42,8), flameMat);
+            flame.position.y = 1.86; g.add(flame);
+            const core = new THREE.Mesh(new THREE.ConeGeometry(0.06,0.26,8), coreMat);
+            core.position.y = 1.85; g.add(core);
+            const light = new THREE.PointLight(0xFF8844, 3.2, 7, 2);
+            light.position.y = 1.9; g.add(light);
+            this.group.add(g);
+            this.torches.push({flame, core, light, baseIntensity:3.2, phase:Math.random()*Math.PI*2});
+        });
+    }
+    _buildRuneCircle(S) {
+        const C = this.config;
+        const hexColor = '#' + C.runeColor.toString(16).padStart(6, '0');
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024; canvas.height = 1024;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0,0,1024,1024);
+        const cx = 512, cy = 512, r = 460;
+        ctx.strokeStyle = hexColor; ctx.fillStyle = hexColor;
+        ctx.shadowBlur = 28; ctx.shadowColor = hexColor;
+        ctx.lineWidth = 3;
+        [r, r-42, r-240].forEach(rr => {
+            ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2); ctx.stroke();
+        });
+        const runes = 'ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛇᛈᛉᛊᛏᛒᛖᛗᛚᛜᛞᛟ';
+        const count = 24;
+        ctx.font = 'bold 42px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        for (let i = 0; i < count; i++) {
+            const a = (i/count)*Math.PI*2;
+            const x = cx + Math.cos(a)*(r-20);
+            const y = cy + Math.sin(a)*(r-20);
+            ctx.save(); ctx.translate(x,y); ctx.rotate(a + Math.PI/2);
+            ctx.fillText(runes[i % runes.length], 0, 0); ctx.restore();
+        }
+        ctx.lineWidth = 2.5; ctx.beginPath();
+        for (let i = 0; i <= 5; i++) {
+            const a = (i*4*Math.PI)/5 - Math.PI/2;
+            const x = cx + Math.cos(a)*(r-100);
+            const y = cy + Math.sin(a)*(r-100);
+            if (i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx,cy,40,0,Math.PI*2); ctx.stroke();
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = 4;
+        const mat = new THREE.MeshBasicMaterial({
+            map: texture, transparent: true, opacity: 0.75,
+            blending: THREE.AdditiveBlending, depthWrite: false,
+            side: THREE.DoubleSide, fog: false
+        });
+        const plane = new THREE.Mesh(new THREE.PlaneGeometry(12*S, 12*S), mat);
+        plane.rotation.x = -Math.PI/2; plane.position.y = -0.58;
+        this.group.add(plane);
+        this.animated.push({type:'pulse',material:mat,base:0.7,amplitude:0.28,speed:1.4});
+    }
+    update(elapsed) {
+        this.elapsed = elapsed;
+        for (const t of this.torches) {
+            const flicker = 1 + Math.sin(elapsed*8+t.phase)*0.15 + Math.sin(elapsed*13.7+t.phase*2)*0.1;
+            t.light.intensity = t.baseIntensity * flicker;
+            const s = 1 + Math.sin(elapsed*10+t.phase)*0.12;
+            t.flame.scale.set(s, 1 + Math.sin(elapsed*7+t.phase)*0.18, s);
+            t.flame.rotation.y = elapsed*0.6 + t.phase;
+            const cs = 1 + Math.sin(elapsed*15+t.phase)*0.15;
+            t.core.scale.set(cs, cs, cs);
+        }
+        for (const c of this.crystals) {
+            c.mesh.rotation.y = elapsed*0.45 + c.phase;
+            c.mesh.position.y = c.baseY + Math.sin(elapsed*1.6+c.phase)*0.035;
+        }
+        for (const a of this.animated) {
+            if (a.type === 'glow' && a.material) {
+                a.material.emissiveIntensity = a.base + Math.sin(elapsed*a.speed)*a.amplitude;
+            } else if (a.type === 'pulse' && a.material) {
+                a.material.opacity = Math.max(0, Math.min(1, a.base + Math.sin(elapsed*a.speed)*a.amplitude));
+            }
+        }
+    }
+    getSquareMesh(name){ const s = this.squares.find(x => x.squareName === name); return s ? s.mesh : null; }
+    dispose() {
+        const gs = new Set(), ms = new Set();
+        this.group.traverse(obj => {
+            if (obj.geometry && !gs.has(obj.geometry)){ obj.geometry.dispose(); gs.add(obj.geometry); }
+            const mats = Array.isArray(obj.material) ? obj.material : (obj.material ? [obj.material] : []);
+            mats.forEach(m => {
+                if (ms.has(m)) return;
+                if (m.map) m.map.dispose();
+                m.dispose(); ms.add(m);
+            });
+        });
+        if (this.group.parent) this.group.parent.remove(this.group);
+    }
+}
+
+// =========================================================
+// متغيرات المشهد الرئيسي
 // =========================================================
 let scene, camera, renderer, controls, board, pieces, floorMesh;
+let board3D = null;
 let squares = [];
 let holder = null;
 let sun, hemi, fill;
@@ -504,8 +952,15 @@ const sceneMaterials = {
     post:null, knob:null, hemi:null, fill:null, sun:null
 };
 
-function position(sq){ return { x: files.indexOf(sq[0]) - 3.5, z: Number(sq[1]) - 4.5 }; }
+// دالة الموقع — متوافقة مع MonsterBoard
+function position(sq){
+    return {
+        x: (files.indexOf(sq[0]) - 3.5) * BOARD_SCALE,
+        z: (4.5 - Number(sq[1])) * BOARD_SCALE
+    };
+}
 
+// ============ القطع (لم تمس — تعمل كما هي) ============
 function chessPiece(type, color){
     const g = new THREE.Group();
     const isWhite = color === 'w';
@@ -546,30 +1001,7 @@ function chessPiece(type, color){
     return g;
 }
 
-function makeBoard(){
-    squares = [];
-    for(let rank = 8; rank >= 1; rank--){
-        for(let f = 0; f < 8; f++){
-            const sq = files[f] + rank;
-            const p = position(sq);
-            const isDark = (rank + f) % 2;
-            const color = isDark ? currentCustom.darkSquare : currentCustom.lightSquare;
-            const mat = new THREE.MeshStandardMaterial({
-                color: new THREE.Color(color),
-                roughness: isDark ? .6 : .55,
-                metalness: isDark ? .2 : .08
-            });
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(.99, .15, .99), mat);
-            mesh.position.set(p.x, .15, p.z);
-            mesh.receiveShadow = true;
-            mesh.userData.square = sq;
-            mesh.userData.isDark = isDark;
-            board.add(mesh);
-            squares.push(mesh);
-        }
-    }
-}
-
+// ============ رسم القطع على المربعات ============
 function disposePiecesGroup(){
     if(!pieces) return;
     const seenGeos = new Set(), seenMats = new Set();
@@ -591,13 +1023,14 @@ function drawBoard(){
     if(!pieces || !chess) return;
     disposePiecesGroup();
     const state = chess.board();
+    const pieceY = 0.25 * BOARD_SCALE; // سطح المربع الجديد
     for(let r=0;r<8;r++){
         for(let f=0;f<8;f++){
             const p = state[r][f]; if(!p) continue;
             const sq = files[f] + (8-r);
             const pos = position(sq);
             const obj = chessPiece(p.type, p.color);
-            obj.position.set(pos.x, .15, pos.z);
+            obj.position.set(pos.x, pieceY, pos.z);
             obj.userData.square = sq;
             obj.userData.color = p.color;
             pieces.add(obj);
@@ -606,9 +1039,14 @@ function drawBoard(){
     pieces.updateMatrixWorld(true);
 }
 
+// ============ الألوان ============
 function resetColors(){
     squares.forEach(s => {
         s.material.color.set(s.userData.isDark ? currentCustom.darkSquare : currentCustom.lightSquare);
+        if (s.material.emissive) {
+            s.material.emissive.setHex(s.userData.isDark ? 0x000000 : 0x1A1500);
+            s.material.emissiveIntensity = s.userData.isDark ? 0 : 0.05;
+        }
     });
 }
 
@@ -618,34 +1056,50 @@ function showMoves(from){
     const moves = chess.moves({ square: from, verbose: true });
     moves.forEach(m => {
         const sq = squares.find(x => x.userData.square === m.to);
-        if(sq) sq.material.color.setHex(0xA8894F);
+        if(sq){
+            sq.material.color.setHex(0xA8894F);
+            if (sq.material.emissive) {
+                sq.material.emissive.setHex(0x554422);
+                sq.material.emissiveIntensity = 0.6;
+            }
+        }
     });
+}
+
+function hexToInt(hex){
+    if (typeof hex === 'number') return hex;
+    return parseInt(String(hex).replace('#',''), 16);
 }
 
 function applyCustomization(cfg){
     currentCustom = { ...currentCustom, ...cfg };
     if(!squares.length) return;
+
+    // ألوان المربعات
     squares.forEach(s => {
         s.material.color.set(s.userData.isDark ? currentCustom.darkSquare : currentCustom.lightSquare);
     });
-    if(sceneMaterials.rail)    sceneMaterials.rail.color.set(currentCustom.frame);
-    if(sceneMaterials.railTop) sceneMaterials.railTop.color.set(currentCustom.accent);
-    if(sceneMaterials.knob)    sceneMaterials.knob.color.set(currentCustom.accent);
-    if(sceneMaterials.post)    sceneMaterials.post.color.set(currentCustom.base);
-    if(sceneMaterials.base)    sceneMaterials.base.color.set(currentCustom.base);
-    if(sceneMaterials.edge)    sceneMaterials.edge.color.set(currentCustom.base);
-    if(sceneMaterials.top)     sceneMaterials.top.color.set(currentCustom.base);
+
+    // ألوان الإطار والقاعدة
+    if (board3D && board3D._mat) {
+        if (board3D._mat.rail)     board3D._mat.rail.color.set(currentCustom.frame);
+        if (board3D._mat.accent)   board3D._mat.accent.color.set(currentCustom.accent);
+        if (board3D._mat.base)     board3D._mat.base.color.set(currentCustom.base);
+        if (board3D._mat.baseTrim) board3D._mat.baseTrim.color.set(currentCustom.accent);
+    }
+
     if(cfg.boardBg) applyBoardBackground(cfg.boardBg);
 }
 
+// ============ الكاميرا ============
 function setCamera(preset){
     const presets = {
-        top:     { pos:[0.01, 15, 0.01], target:[0,0,0] },
-        front:   { pos:[0, 5.5, 14],     target:[0,0.3,0] },
-        side:    { pos:[14, 5.5, 0],     target:[0,0.3,0] },
-        angle45: { pos:[10, 10, 10],     target:[0,0,0] },
-        iso:     { pos:[9, 11, -9],      target:[0,0,0] },
-        closeup: { pos:[3, 4.5, 5],      target:[0,0.3,0] }
+        top:     { pos:[0.01, 16, 0.01], target:[0,0.3,0] },
+        front:   { pos:[0, 6.5, 15],     target:[0,0.5,0] },
+        side:    { pos:[15, 6.5, 0],     target:[0,0.5,0] },
+        angle45: { pos:[11, 11, 11],     target:[0,0.3,0] },
+        iso:     { pos:[10, 12, -10],    target:[0,0.3,0] },
+        closeup: { pos:[3.5, 5, 6],      target:[0,0.5,0] }
     };
     const p = presets[preset];
     if(!p || !camera || !controls) return;
@@ -678,6 +1132,7 @@ function animateGame(){
         if(t >= 1) cameraTween = null;
     }
     if(controls) controls.update();
+    if(board3D) board3D.update(performance.now() / 1000);
     if(renderer && scene && camera) renderer.render(scene, camera);
 }
 
@@ -695,8 +1150,7 @@ function makeSkyDomeTexture(top, bottom){
     c.width = 256; c.height = 256;
     const ctx = c.getContext('2d');
     const grad = ctx.createLinearGradient(0,0,0,256);
-    grad.addColorStop(0, top);
-    grad.addColorStop(1, bottom);
+    grad.addColorStop(0, top); grad.addColorStop(1, bottom);
     ctx.fillStyle = grad; ctx.fillRect(0,0,256,256);
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
@@ -705,14 +1159,9 @@ function makeSkyDomeTexture(top, bottom){
 
 function buildForestBg(){
     const g = new THREE.Group();
-
     const grassMat = new THREE.MeshStandardMaterial({ color:0x4CAF50, roughness:0.9 });
     const ground = new THREE.Mesh(new THREE.CircleGeometry(45, 32), grassMat);
-    ground.rotation.x = -Math.PI/2;
-    ground.position.y = -0.8;
-    ground.receiveShadow = true;
-    g.add(ground);
-
+    ground.rotation.x = -Math.PI/2; ground.position.y = -0.8; ground.receiveShadow = true; g.add(ground);
     const trunkMat = new THREE.MeshStandardMaterial({ color:0x5D4037, roughness:0.95 });
     const leafMats = [
         new THREE.MeshStandardMaterial({ color:0x2E7D32, roughness:0.8 }),
@@ -727,38 +1176,19 @@ function buildForestBg(){
         const scale = 1.0 + Math.random()*1.5;
         const trunkH = 6*scale;
         const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.6*scale,1.2*scale,trunkH,8), trunkMat);
-        trunk.position.set(x, trunkH/2 - 0.8, z);
-        trunk.castShadow = true; g.add(trunk);
+        trunk.position.set(x, trunkH/2 - 0.8, z); trunk.castShadow = true; g.add(trunk);
         const leafMat = leafMats[Math.floor(Math.random()*leafMats.length)];
         for(let j=0; j<3; j++){
             const leaf = new THREE.Mesh(new THREE.ConeGeometry((3.5-j*0.8)*scale, 4*scale, 8), leafMat);
-            leaf.position.set(x, trunkH - 0.8 + j*2.5*scale, z);
-            leaf.castShadow = true; g.add(leaf);
+            leaf.position.set(x, trunkH - 0.8 + j*2.5*scale, z); leaf.castShadow = true; g.add(leaf);
         }
     }
-
     const bushMat = new THREE.MeshStandardMaterial({ color:0x66BB6A, roughness:0.9 });
     for(let i=0; i<60; i++){
         const a = Math.random()*Math.PI*2;
         const d = 5 + Math.random()*15;
         const bush = new THREE.Mesh(new THREE.SphereGeometry(0.3+Math.random()*0.4, 8, 8), bushMat);
-        bush.position.set(Math.cos(a)*d, 0, Math.sin(a)*d);
-        bush.scale.y = 0.6;
-        g.add(bush);
-    }
-
-    const beamMat = new THREE.MeshBasicMaterial({
-        color:0xFFFF99, transparent:true, opacity:0.15,
-        blending:THREE.AdditiveBlending, side:THREE.DoubleSide, depthWrite:false
-    });
-    for(let i=0; i<6; i++){
-        const beam = new THREE.Mesh(new THREE.PlaneGeometry(2, 20), beamMat);
-        const a = Math.random()*Math.PI*2;
-        const d = 5 + Math.random()*10;
-        beam.position.set(Math.cos(a)*d, 8, Math.sin(a)*d);
-        beam.rotation.x = -Math.PI/4;
-        beam.rotation.y = a;
-        g.add(beam);
+        bush.position.set(Math.cos(a)*d, 0, Math.sin(a)*d); bush.scale.y = 0.6; g.add(bush);
     }
     return g;
 }
@@ -788,7 +1218,6 @@ function buildCastleBg(){
 function buildGiantBg(){
     const g = new THREE.Group();
     const skinMat = new THREE.MeshStandardMaterial({ color:0x3a2818, roughness:0.85 });
-    const skinDarkMat = new THREE.MeshStandardMaterial({ color:0x1a1008, roughness:0.9 });
     const eyeMat = new THREE.MeshBasicMaterial({ color:0xFFD060 });
     const head = new THREE.Mesh(new THREE.SphereGeometry(2.5,24,16), skinMat);
     head.position.set(0,-3.4,0); head.scale.set(1.2,1.0,1.1); g.add(head);
@@ -806,16 +1235,13 @@ function buildGiantBg(){
 function clearBoardBg(){
     if(!boardBgGroup) return;
     scene.remove(boardBgGroup);
-    const disposedGeos = new Set(), disposedMats = new Set();
+    const dg = new Set(), dm = new Set();
     boardBgGroup.traverse(obj => {
-        if(obj.geometry && !disposedGeos.has(obj.geometry)){ obj.geometry.dispose(); disposedGeos.add(obj.geometry); }
+        if(obj.geometry && !dg.has(obj.geometry)){ obj.geometry.dispose(); dg.add(obj.geometry); }
         if(obj.material){
             const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
             mats.forEach(m => {
-                if(!disposedMats.has(m)){
-                    if(m.map) m.map.dispose();
-                    m.dispose(); disposedMats.add(m);
-                }
+                if(!dm.has(m)){ if(m.map) m.map.dispose(); m.dispose(); dm.add(m); }
             });
         }
     });
@@ -840,30 +1266,33 @@ function applyBoardBackground(type){
 
     boardBgGroup = new THREE.Group();
     const skyTex = makeSkyDomeTexture(cfg.sky[0], cfg.sky[1]);
-    const skyGeo = new THREE.SphereGeometry(70,32,16);
-    const skyMat = new THREE.MeshBasicMaterial({ map:skyTex, side:THREE.BackSide, depthWrite:false, fog:false });
-    const sky = new THREE.Mesh(skyGeo, skyMat);
-    sky.position.y = 5;
-    boardBgGroup.add(sky);
-    
+    const sky = new THREE.Mesh(
+        new THREE.SphereGeometry(70,32,16),
+        new THREE.MeshBasicMaterial({ map:skyTex, side:THREE.BackSide, depthWrite:false, fog:false })
+    );
+    sky.position.y = 5; boardBgGroup.add(sky);
+
     if(type==='castle') boardBgGroup.add(buildCastleBg());
     else if(type==='forest') boardBgGroup.add(buildForestBg());
     else if(type==='giant') boardBgGroup.add(buildGiantBg());
-    
+
     scene.add(boardBgGroup);
     _lastAppliedBg = type;
 }
 
+// =========================================================
+// 🎯 التهيئة الرئيسية — الرقعة الاحترافية
+// =========================================================
 async function initGame3D(){
     if(gameInitialized) return;
     holder = document.getElementById("game");
-    
+
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB);
     scene.fog = new THREE.Fog(0xA8E6CF, 25, 75);
 
-    camera = new THREE.PerspectiveCamera(45, 1, .1, 100);
-    camera.position.set(8, 10, 12);
+    camera = new THREE.PerspectiveCamera(45, 1, .1, 200);
+    camera.position.set(10, 12, 14);
 
     renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false, powerPreference:'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 1.5));
@@ -875,78 +1304,80 @@ async function initGame3D(){
     holder.appendChild(renderer.domElement);
 
     controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, .3, 0);
+    controls.target.set(0, 0.5, 0);
     controls.enableDamping = true;
     controls.enablePan = false;
-    controls.minDistance = 7;
-    controls.maxDistance = 22;
+    controls.minDistance = 8;
+    controls.maxDistance = 26;
     controls.maxPolarAngle = Math.PI / 2.15;
 
+    // ── الإضاءة الخارجية (تُستخدم من قِبل applyBoardBackground) ──
     hemi = new THREE.HemisphereLight(0xFFFFFF, 0x87CEEB, 1.5);
     scene.add(hemi); sceneMaterials.hemi = hemi;
 
     sun = new THREE.DirectionalLight(0xFFFDE7, 3.0);
-    sun.position.set(6, 12, 8);
+    sun.position.set(8, 15, 6);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    sun.shadow.camera.left = -7; sun.shadow.camera.right = 7;
-    sun.shadow.camera.top = 7; sun.shadow.camera.bottom = -7;
-    sun.shadow.camera.near = 1; sun.shadow.camera.far = 30;
-    sun.shadow.bias = -0.0005;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.left = -12; sun.shadow.camera.right = 12;
+    sun.shadow.camera.top = 12; sun.shadow.camera.bottom = -12;
+    sun.shadow.camera.near = 1; sun.shadow.camera.far = 40;
+    sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
     scene.add(sun); sceneMaterials.sun = sun;
 
-    fill = new THREE.DirectionalLight(0xA8B0BB, 1.0);
-    fill.position.set(-6, 9, -8);
+    fill = new THREE.DirectionalLight(0xA8B0BB, 0.8);
+    fill.position.set(-8, 9, -8);
     scene.add(fill); sceneMaterials.fill = fill;
 
+    // ── الأرضية ──
     floorMesh = new THREE.Mesh(
         new THREE.PlaneGeometry(200,200),
         new THREE.MeshStandardMaterial({ color:0x0A0B10, roughness:.95 })
     );
     floorMesh.rotation.x = -Math.PI/2;
-    floorMesh.position.y = -.85;
+    floorMesh.position.y = -0.85;
     floorMesh.receiveShadow = true;
     scene.add(floorMesh);
 
-    sceneMaterials.base = new THREE.MeshStandardMaterial({ color:0x141519, roughness:.55, metalness:.3 });
-    const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(9.8,.9,9.8), sceneMaterials.base);
-    baseMesh.position.y = -.45; baseMesh.castShadow = true; baseMesh.receiveShadow = true;
-    scene.add(baseMesh);
+    // ═══════════════════════════════════════════════════════
+    // 🏛️ الرقعة الاحترافية الجديدة
+    // ═══════════════════════════════════════════════════════
+    board3D = new MonsterBoard({
+        size: BOARD_SCALE,
+        includeLights: false, // نعتمد على الإضاءة الخارجية
+        lightSquareColor: hexToInt(currentCustom.lightSquare),
+        darkSquareColor: hexToInt(currentCustom.darkSquare),
+        frameColor: hexToInt(currentCustom.frame),
+        accentColor: hexToInt(currentCustom.accent),
+        baseColor: hexToInt(currentCustom.base),
+        runeColor: 0x66CCFF,
+        crystalColor: 0x88AAFF,
+        torchColor: 0xFF8844,
+        decor: {
+            pillars: true,
+            gargoyles: true,
+            dragons: true,
+            skulls: true,
+            crystals: true,
+            torches: true,
+            runes: true
+        }
+    });
+    board = board3D.group;
+    scene.add(board);
 
-    sceneMaterials.edge = new THREE.MeshStandardMaterial({ color:0x050810, roughness:.5, metalness:.5 });
-    const edgeBand = new THREE.Mesh(new THREE.BoxGeometry(9.9,.12,9.9), sceneMaterials.edge);
-    edgeBand.position.y = -.07; edgeBand.castShadow = true; edgeBand.receiveShadow = true;
-    scene.add(edgeBand);
-
-    sceneMaterials.top = new THREE.MeshStandardMaterial({ color:0x132B45, roughness:.5, metalness:.25 });
-    const tabletop = new THREE.Mesh(new THREE.BoxGeometry(9.5,.06,9.5), sceneMaterials.top);
-    tabletop.position.y = .03; tabletop.receiveShadow = true;
-    scene.add(tabletop);
-
-    sceneMaterials.rail    = new THREE.MeshStandardMaterial({ color:0x2A2C33, roughness:.45, metalness:.45 });
-    sceneMaterials.railTop = new THREE.MeshStandardMaterial({ color:0xC9A96A, roughness:.35, metalness:.7 });
-    sceneMaterials.post    = new THREE.MeshStandardMaterial({ color:0x141519, roughness:.35, metalness:.55 });
-    sceneMaterials.knob    = new THREE.MeshStandardMaterial({ color:0xC9A96A, roughness:.3, metalness:.8 });
-
-    const railH = .22, railThick = .32, halfBoard = 4;
-    [
-        [new THREE.BoxGeometry(8+railThick*2, railH, railThick), 0, halfBoard+railThick/2],
-        [new THREE.BoxGeometry(8+railThick*2, railH, railThick), 0, -halfBoard-railThick/2],
-        [new THREE.BoxGeometry(railThick, railH, 8), -halfBoard-railThick/2, 0],
-        [new THREE.BoxGeometry(railThick, railH, 8), halfBoard+railThick/2, 0]
-    ].forEach(([geo,x,z])=>{
-        const m = new THREE.Mesh(geo, sceneMaterials.rail);
-        m.position.set(x, railH/2 + .06, z);
-        m.castShadow = true; m.receiveShadow = true;
-        scene.add(m);
+    // ── تحويل مربعات MonsterBoard إلى مصفوفة مسطحة بمقاسات منفصلة للتلوين الفردي ──
+    squares = board3D.squares.map(s => {
+        s.mesh.material = s.mesh.material.clone();
+        s.mesh.userData.square = s.squareName;
+        s.mesh.userData.isDark = s.isDark;
+        return s.mesh;
     });
 
-    board = new THREE.Group();
+    // ── القطع ──
     pieces = new THREE.Group();
-    scene.add(board);
     scene.add(pieces);
 
-    makeBoard();
     applyCustomization(currentCustom);
     gameInitialized = true;
     animateGame();
@@ -965,7 +1396,6 @@ const AudioEngine = {
     ctx: null, sfxGain: null, musicGain: null,
     musicPlaying: false, musicSchedulerId: null,
     nextNoteTime: 0, currentStep: 0, loopLength: 32, stepDuration: 0.5,
-
     init() {
         if (this.ctx) return;
         const AC = window.AudioContext || window.webkitAudioContext;
@@ -973,12 +1403,9 @@ const AudioEngine = {
         try {
             this.ctx = new AC();
             if (this.ctx.state === 'suspended') this.ctx.resume().catch(()=>{});
-            this.sfxGain = this.ctx.createGain();
-            this.musicGain = this.ctx.createGain();
-            this.sfxGain.connect(this.ctx.destination);
-            this.musicGain.connect(this.ctx.destination);
-            const delay = this.ctx.createDelay(0.5);
-            delay.delayTime.value = 0.30;
+            this.sfxGain = this.ctx.createGain(); this.musicGain = this.ctx.createGain();
+            this.sfxGain.connect(this.ctx.destination); this.musicGain.connect(this.ctx.destination);
+            const delay = this.ctx.createDelay(0.5); delay.delayTime.value = 0.30;
             const dry = this.ctx.createGain(); dry.gain.value = 1.0;
             const wet = this.ctx.createGain(); wet.gain.value = 0.16;
             this.musicGain.connect(dry); dry.connect(this.ctx.destination);
@@ -999,13 +1426,10 @@ const AudioEngine = {
     resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(()=>{}); },
     canPlaySfx() { return playerData.settings.sound; },
     playTone(freq, opts = {}) {
-        if (!this.ctx) return;
-        this.resume();
+        if (!this.ctx) return; this.resume();
         const { duration = 0.15, type = 'sine', gain = 0.5, attack = 0.005, destination = this.sfxGain, startTime = this.ctx.currentTime } = opts;
-        const osc = this.ctx.createOscillator();
-        const g = this.ctx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, startTime);
+        const osc = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        osc.type = type; osc.frequency.setValueAtTime(freq, startTime);
         g.gain.setValueAtTime(0, startTime);
         g.gain.linearRampToValueAtTime(gain, startTime + attack);
         g.gain.exponentialRampToValueAtTime(0.0001, startTime + attack + duration);
@@ -1014,13 +1438,11 @@ const AudioEngine = {
     },
     playNoise(duration = 0.1, gain = 0.3, startTime) {
         if (!this.ctx) return;
-        const sr = this.ctx.sampleRate;
-        const len = Math.max(1, Math.floor(sr * duration));
+        const sr = this.ctx.sampleRate, len = Math.max(1, Math.floor(sr * duration));
         const buffer = this.ctx.createBuffer(1, len, sr);
         const data = buffer.getChannelData(0);
         for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
-        const src = this.ctx.createBufferSource();
-        src.buffer = buffer;
+        const src = this.ctx.createBufferSource(); src.buffer = buffer;
         const g = this.ctx.createGain(); g.gain.value = gain;
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'highpass'; filter.frequency.value = 800;
@@ -1074,9 +1496,7 @@ const AudioEngine = {
         this.init();
         if (!this.ctx || this.musicPlaying) return;
         if (!playerData.settings.music) return;
-        this.resume();
-        this.musicPlaying = true;
-        this.currentStep = 0;
+        this.resume(); this.musicPlaying = true; this.currentStep = 0;
         this.nextNoteTime = this.ctx.currentTime + 0.1;
         this.musicSchedulerId = setInterval(() => this.musicScheduler(), 25);
     },
@@ -1113,27 +1533,21 @@ const AudioEngine = {
         const osc2 = ctx.createOscillator(); osc2.type = 'sine'; osc2.frequency.value = freq * 2;
         const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 2400;
         const g1 = ctx.createGain(), g2 = ctx.createGain();
-        g1.gain.setValueAtTime(0, when);
-        g1.gain.linearRampToValueAtTime(velocity, when + 0.008);
+        g1.gain.setValueAtTime(0, when); g1.gain.linearRampToValueAtTime(velocity, when + 0.008);
         g1.gain.exponentialRampToValueAtTime(0.0001, when + duration);
-        g2.gain.setValueAtTime(0, when);
-        g2.gain.linearRampToValueAtTime(velocity * 0.25, when + 0.005);
+        g2.gain.setValueAtTime(0, when); g2.gain.linearRampToValueAtTime(velocity * 0.25, when + 0.005);
         g2.gain.exponentialRampToValueAtTime(0.0001, when + duration * 0.5);
-        osc1.connect(g1).connect(filter);
-        osc2.connect(g2).connect(filter);
+        osc1.connect(g1).connect(filter); osc2.connect(g2).connect(filter);
         filter.connect(this.musicGain);
         osc1.start(when); osc2.start(when);
-        osc1.stop(when + duration + 0.1);
-        osc2.stop(when + duration * 0.5 + 0.1);
+        osc1.stop(when + duration + 0.1); osc2.stop(when + duration * 0.5 + 0.1);
     }
 };
 
 let audioUnlocked = false;
 function unlockAudio() {
     if (audioUnlocked) return;
-    audioUnlocked = true;
-    AudioEngine.init();
-    AudioEngine.resume();
+    audioUnlocked = true; AudioEngine.init(); AudioEngine.resume();
     if (playerData.settings.music) AudioEngine.startMusic();
 }
 ['pointerdown', 'touchstart', 'keydown'].forEach(evt =>
@@ -1469,9 +1883,8 @@ window.resetCustomization = function(){
 };
 
 window.setCamera = function(preset){
-    if (gameInitialized) setCamera3D(preset);
+    if (gameInitialized) setCamera(preset);
 };
-function setCamera3D(preset){ setCamera(preset); }
 
 window.startPreview = async function(){
     AudioEngine.sfxClick();
@@ -1488,7 +1901,7 @@ window.startPreview = async function(){
 };
 
 // =========================================================
-// منطق اللعبة
+// منطق اللعبة (لم يمس)
 // =========================================================
 function updateStatus(){
     const status = document.getElementById("status");
@@ -1701,10 +2114,7 @@ window.startGame = async function(level){
 
 window.backMenu = function(){
     AudioEngine.sfxClick();
-    gameStarted = false;
-    thinking = false;
-    pendingPromotion = null;
-    selected = null;
+    gameStarted = false; thinking = false; pendingPromotion = null; selected = null;
     const promo = document.getElementById("promotion");
     if(promo) promo.style.display = "none";
     document.getElementById("gameScreen").classList.remove("active");
@@ -1713,14 +2123,9 @@ window.backMenu = function(){
 
 window.newGame = function(){
     AudioEngine.sfxClick();
-    gameStarted = true;
-    gameOverHandled = false;
-    chess.reset();
-    snapshots = [];
-    selected = null;
-    pendingPromotion = null;
-    thinking = false;
-    playerCaptures = 0;
+    gameStarted = true; gameOverHandled = false;
+    chess.reset(); snapshots = []; selected = null; pendingPromotion = null;
+    thinking = false; playerCaptures = 0;
     const promo = document.getElementById("promotion");
     if(promo) promo.style.display = "none";
     document.getElementById("moves").textContent = "سجل الحركات سيظهر هنا";
@@ -1733,8 +2138,7 @@ window.undoMove = function(){
     if(snapshots.length === 0){ showToast("لا توجد حركات للتراجع عنها"); return; }
     const snap = snapshots.pop();
     try{ chess.load(snap.fen); }catch(e){ return; }
-    selected = null;
-    pendingPromotion = null;
+    selected = null; pendingPromotion = null;
     document.getElementById("promotion").style.display = "none";
     if(gameInitialized){ drawBoard(); resetColors(); }
     document.getElementById("moves").textContent = snap.history.length ? snap.history.join("  ") : "سجل الحركات سيظهر هنا";
@@ -1967,11 +2371,6 @@ window.addEventListener("resize", onResizeBG, { passive: true });
 window.addEventListener("orientationchange", () => setTimeout(onResizeBG, 180), { passive: true });
 onResizeBG();
 animateBG();
-
-setTimeout(() => {
-    const s = document.getElementById("splash");
-    if (s) { s.classList.add("hide"); setTimeout(() => { if(s.parentNode) s.remove(); }, 1000); }
-}, 3600);
 </script>
 </body>
 </html>
