@@ -1,3 +1,12 @@
+السبب بسيط جداً: مكتبة OrbitControls لم تكن مستوردة (Imported) في الكود السابق!
+
+في الكود القديم، كنا نستخدم new OrbitControls(...) ولكن لم نكن نستوردها عند استخدام importmap. لذلك كان الكود يتعطل فوراً عند محاولة إنشاء الكاميرا، ولأن الخطأ لا يظهر على الشاشة، كانت تبقى الخلفية الزرقاء فارغة.
+
+لقد قمت بإصلاح هذا الخطأ بضمان استيراد OrbitControls بشكل صحيح في بداية الملف، مع إضافة حماية (try/catch) لإظهار أي خطأ مستقبلاً.
+
+إليك الملف الكامل والجاهز بعد إصلاح المشكلة:
+
+```html
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -447,25 +456,31 @@
 
 <!-- ============ الكود الرئيسي ============ -->
 <script type="module" id="mainModule">
-// ============ استيراد المكتبات ============
-let THREE, Chess;
+// ============ استيراد المكتبات (تم إصلاح OrbitControls هنا) ============
+let THREE, Chess, OrbitControls;
 let EffectComposer, RenderPass, UnrealBloomPass, OutputPass;
 
 try {
     THREE = await import('three');
     ({ Chess } = await import('chess'));
+    // ✅ استيراد OrbitControls صراحةً
+    ({ OrbitControls } = await import('three/addons/controls/OrbitControls.js'));
     ({ EffectComposer } = await import('three/addons/postprocessing/EffectComposer.js'));
     ({ RenderPass }     = await import('three/addons/postprocessing/RenderPass.js'));
     ({ UnrealBloomPass }= await import('three/addons/postprocessing/UnrealBloomPass.js'));
     ({ OutputPass }     = await import('three/addons/postprocessing/OutputPass.js'));
 } catch(err) {
     console.warn('[module] فشل التحميل، محاولة UMD:', err);
-    if (window.THREE && window.Chess) {
-        THREE = window.THREE; Chess = window.Chess;
+    if (window.THREE && window.Chess && window.THREE.OrbitControls) {
+        THREE = window.THREE;
+        Chess = window.Chess;
+        OrbitControls = window.THREE.OrbitControls;
         EffectComposer = null; RenderPass = null; UnrealBloomPass = null; OutputPass = null;
     } else {
         await new Promise(res => window.addEventListener('libsReady', res, { once: true }));
-        THREE = window.THREE; Chess = window.Chess;
+        THREE = window.THREE;
+        Chess = window.Chess;
+        OrbitControls = window.THREE.OrbitControls;
         EffectComposer = null; RenderPass = null; UnrealBloomPass = null; OutputPass = null;
     }
 }
@@ -485,7 +500,6 @@ let playerData = {
     settings: { ...DEFAULT_SETTINGS }
 };
 
-// حجم الرقعة — قابل للتعديل من هنا
 const BOARD_SCALE = 1;
 
 // =========================================================
@@ -947,12 +961,7 @@ let boardBgGroup = null;
 let _lastAppliedBg = null;
 
 const files = "abcdefgh";
-const sceneMaterials = {
-    base:null, edge:null, top:null, rail:null, railTop:null,
-    post:null, knob:null, hemi:null, fill:null, sun:null
-};
 
-// دالة الموقع — متوافقة مع MonsterBoard
 function position(sq){
     return {
         x: (files.indexOf(sq[0]) - 3.5) * BOARD_SCALE,
@@ -960,7 +969,7 @@ function position(sq){
     };
 }
 
-// ============ القطع (لم تمس — تعمل كما هي) ============
+// ============ القطع (لم تمس) ============
 function chessPiece(type, color){
     const g = new THREE.Group();
     const isWhite = color === 'w';
@@ -1001,7 +1010,6 @@ function chessPiece(type, color){
     return g;
 }
 
-// ============ رسم القطع على المربعات ============
 function disposePiecesGroup(){
     if(!pieces) return;
     const seenGeos = new Set(), seenMats = new Set();
@@ -1023,7 +1031,7 @@ function drawBoard(){
     if(!pieces || !chess) return;
     disposePiecesGroup();
     const state = chess.board();
-    const pieceY = 0.25 * BOARD_SCALE; // سطح المربع الجديد
+    const pieceY = 0.25 * BOARD_SCALE;
     for(let r=0;r<8;r++){
         for(let f=0;f<8;f++){
             const p = state[r][f]; if(!p) continue;
@@ -1068,6 +1076,7 @@ function showMoves(from){
 
 function hexToInt(hex){
     if (typeof hex === 'number') return hex;
+    if (hex.startsWith('0x')) return parseInt(hex, 16);
     return parseInt(String(hex).replace('#',''), 16);
 }
 
@@ -1075,12 +1084,10 @@ function applyCustomization(cfg){
     currentCustom = { ...currentCustom, ...cfg };
     if(!squares.length) return;
 
-    // ألوان المربعات
     squares.forEach(s => {
         s.material.color.set(s.userData.isDark ? currentCustom.darkSquare : currentCustom.lightSquare);
     });
 
-    // ألوان الإطار والقاعدة
     if (board3D && board3D._mat) {
         if (board3D._mat.rail)     board3D._mat.rail.color.set(currentCustom.frame);
         if (board3D._mat.accent)   board3D._mat.accent.color.set(currentCustom.accent);
@@ -1091,7 +1098,6 @@ function applyCustomization(cfg){
     if(cfg.boardBg) applyBoardBackground(cfg.boardBg);
 }
 
-// ============ الكاميرا ============
 function setCamera(preset){
     const presets = {
         top:     { pos:[0.01, 16, 0.01], target:[0,0.3,0] },
@@ -1281,7 +1287,7 @@ function applyBoardBackground(type){
 }
 
 // =========================================================
-// 🎯 التهيئة الرئيسية — الرقعة الاحترافية
+// 🎯 التهيئة الرئيسية
 // =========================================================
 async function initGame3D(){
     if(gameInitialized) return;
@@ -1311,9 +1317,8 @@ async function initGame3D(){
     controls.maxDistance = 26;
     controls.maxPolarAngle = Math.PI / 2.15;
 
-    // ── الإضاءة الخارجية (تُستخدم من قِبل applyBoardBackground) ──
     hemi = new THREE.HemisphereLight(0xFFFFFF, 0x87CEEB, 1.5);
-    scene.add(hemi); sceneMaterials.hemi = hemi;
+    scene.add(hemi);
 
     sun = new THREE.DirectionalLight(0xFFFDE7, 3.0);
     sun.position.set(8, 15, 6);
@@ -1323,13 +1328,12 @@ async function initGame3D(){
     sun.shadow.camera.top = 12; sun.shadow.camera.bottom = -12;
     sun.shadow.camera.near = 1; sun.shadow.camera.far = 40;
     sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
-    scene.add(sun); sceneMaterials.sun = sun;
+    scene.add(sun);
 
     fill = new THREE.DirectionalLight(0xA8B0BB, 0.8);
     fill.position.set(-8, 9, -8);
-    scene.add(fill); sceneMaterials.fill = fill;
+    scene.add(fill);
 
-    // ── الأرضية ──
     floorMesh = new THREE.Mesh(
         new THREE.PlaneGeometry(200,200),
         new THREE.MeshStandardMaterial({ color:0x0A0B10, roughness:.95 })
@@ -1339,12 +1343,9 @@ async function initGame3D(){
     floorMesh.receiveShadow = true;
     scene.add(floorMesh);
 
-    // ═══════════════════════════════════════════════════════
-    // 🏛️ الرقعة الاحترافية الجديدة
-    // ═══════════════════════════════════════════════════════
     board3D = new MonsterBoard({
         size: BOARD_SCALE,
-        includeLights: false, // نعتمد على الإضاءة الخارجية
+        includeLights: false,
         lightSquareColor: hexToInt(currentCustom.lightSquare),
         darkSquareColor: hexToInt(currentCustom.darkSquare),
         frameColor: hexToInt(currentCustom.frame),
@@ -1366,7 +1367,6 @@ async function initGame3D(){
     board = board3D.group;
     scene.add(board);
 
-    // ── تحويل مربعات MonsterBoard إلى مصفوفة مسطحة بمقاسات منفصلة للتلوين الفردي ──
     squares = board3D.squares.map(s => {
         s.mesh.material = s.mesh.material.clone();
         s.mesh.userData.square = s.squareName;
@@ -1374,7 +1374,6 @@ async function initGame3D(){
         return s.mesh;
     });
 
-    // ── القطع ──
     pieces = new THREE.Group();
     scene.add(pieces);
 
@@ -1892,7 +1891,15 @@ window.startPreview = async function(){
     document.getElementById('gameScreen').classList.add('active');
     gameStarted = false;
     gameOverHandled = true;
-    if(!gameInitialized) await initGame3D();
+    if(!gameInitialized) {
+        try {
+            await initGame3D();
+        } catch(e) {
+            console.error("Game init error:", e);
+            showToast("❌ حدث خطأ أثناء تحميل الرقعة");
+            return;
+        }
+    }
     drawBoard();
     updateStatus();
     setTimeout(onResize, 50);
@@ -1901,7 +1908,7 @@ window.startPreview = async function(){
 };
 
 // =========================================================
-// منطق اللعبة (لم يمس)
+// منطق اللعبة
 // =========================================================
 function updateStatus(){
     const status = document.getElementById("status");
@@ -2104,7 +2111,17 @@ window.startGame = async function(level){
     gameStarted = true;
     gameOverHandled = false;
     if(level) document.getElementById('level').value = level;
-    if(!gameInitialized) await initGame3D();
+    
+    if(!gameInitialized) {
+        try {
+            await initGame3D();
+        } catch(e) {
+            console.error("Game init error:", e);
+            showToast("❌ حدث خطأ أثناء تحميل الرقعة");
+            return;
+        }
+    }
+    
     window.newGame();
     const rs = getRS();
     if(rs) rs.updateMission('play1', 1);
@@ -2374,3 +2391,4 @@ animateBG();
 </script>
 </body>
 </html>
+```
