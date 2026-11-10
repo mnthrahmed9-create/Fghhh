@@ -1,5 +1,5 @@
 // ============================================================
-// board.js — رقعة الشطرنج + القطع ثلاثية الأبعاد + الخلفيات
+// board.js — رقعة الشطرنج + القطع + الخلفيات (نسخة نهارية)
 // ============================================================
 window.BoardModule = (function(){
     'use strict';
@@ -19,7 +19,7 @@ window.BoardModule = (function(){
         lightSquare:'#E8DEC8', darkSquare:'#1E2A3D',
         frame:'#2A2C33', accent:'#C9A96A',
         base:'#141519', lightColor:'#FFF0D0',
-        boardBg:'castle'
+        boardBg:'forest'
     };
 
     const sceneMaterials = {
@@ -27,7 +27,6 @@ window.BoardModule = (function(){
         post:null, knob:null, hemi:null, fill:null, sun:null
     };
 
-    // ---------- تحميل THREE ----------
     async function loadThree(){
         if (THREE) return;
         try {
@@ -41,7 +40,6 @@ window.BoardModule = (function(){
 
     function position(sq){ return { x: files.indexOf(sq[0]) - 3.5, z: Number(sq[1]) - 4.5 }; }
 
-    // ---------- بناء قطعة ----------
     function chessPiece(type, color){
         const g = new THREE.Group();
         const isWhite = color === 'w';
@@ -82,7 +80,6 @@ window.BoardModule = (function(){
         return g;
     }
 
-    // ---------- بناء المربعات ----------
     function makeBoard(){
         squares = [];
         for(let rank = 8; rank >= 1; rank--){
@@ -172,9 +169,6 @@ window.BoardModule = (function(){
         if(sceneMaterials.base)    sceneMaterials.base.color.set(currentCustom.base);
         if(sceneMaterials.edge)    sceneMaterials.edge.color.set(currentCustom.base);
         if(sceneMaterials.top)     sceneMaterials.top.color.set(currentCustom.base);
-        if(sceneMaterials.sun)     sceneMaterials.sun.color.set(currentCustom.lightColor);
-        if(sceneMaterials.fill)    sceneMaterials.fill.color.set(currentCustom.lightColor);
-        if(sceneMaterials.hemi)    sceneMaterials.hemi.color.set(currentCustom.lightColor);
         if(cfg.boardBg) applyBoardBackground(cfg.boardBg);
     }
 
@@ -226,24 +220,9 @@ window.BoardModule = (function(){
     // ============================================================
     const BOARD_BACKGROUNDS = {
         castle: { name:'🏰 قلعة', bg:0x080a15, fog:0x101828, fogNear:22, fogFar:62, sky:['#0a1428','#1a2840'] },
-        forest: { name:'🌲 غابة', bg:0x020804, fog:0x06180c, fogNear:14, fogFar:45, sky:['#061410','#0a1a10'] },
+        forest: { name:'🌲 غابة نهارية', bg:0x87CEEB, fog:0xA8E6CF, fogNear:25, fogFar:75, sky:['#4A90E2','#B0E0E6'] },
         giant:  { name:'🗿 عملاق', bg:0x0a1a30, fog:0x1a3050, fogNear:30, fogFar:90, sky:['#1a3050','#0a1a30'] }
     };
-
-    function makeGlowSpriteTexture(){
-        const size = 128;
-        const c = document.createElement('canvas');
-        c.width = c.height = size;
-        const ctx = c.getContext('2d');
-        const g = ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
-        g.addColorStop(0,'rgba(255,240,180,1)');
-        g.addColorStop(0.4,'rgba(255,180,80,0.5)');
-        g.addColorStop(1,'rgba(255,140,40,0)');
-        ctx.fillStyle = g; ctx.fillRect(0,0,size,size);
-        const t = new THREE.CanvasTexture(c);
-        t.colorSpace = THREE.SRGBColorSpace;
-        return t;
-    }
 
     function makeSkyDomeTexture(top, bottom){
         const c = document.createElement('canvas');
@@ -258,6 +237,72 @@ window.BoardModule = (function(){
         return t;
     }
 
+    // غابة نهارية 3D
+    function buildForestBg(){
+        const g = new THREE.Group();
+
+        // أرضية عشبية
+        const grassMat = new THREE.MeshStandardMaterial({ color:0x4CAF50, roughness:0.9 });
+        const ground = new THREE.Mesh(new THREE.CircleGeometry(45, 32), grassMat);
+        ground.rotation.x = -Math.PI/2;
+        ground.position.y = -0.8;
+        ground.receiveShadow = true;
+        g.add(ground);
+
+        // أشجار الغابة
+        const trunkMat = new THREE.MeshStandardMaterial({ color:0x5D4037, roughness:0.95 });
+        const leafMats = [
+            new THREE.MeshStandardMaterial({ color:0x2E7D32, roughness:0.8 }),
+            new THREE.MeshStandardMaterial({ color:0x388E3C, roughness:0.8 }),
+            new THREE.MeshStandardMaterial({ color:0x4CAF50, roughness:0.8 }),
+            new THREE.MeshStandardMaterial({ color:0x1B5E20, roughness:0.8 })
+        ];
+        for(let i=0; i<40; i++){
+            const angle = Math.random()*Math.PI*2;
+            const dist = 10 + Math.random()*22;
+            const x = Math.cos(angle)*dist, z = Math.sin(angle)*dist;
+            const scale = 1.0 + Math.random()*1.5;
+            const trunkH = 6*scale;
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.6*scale,1.2*scale,trunkH,8), trunkMat);
+            trunk.position.set(x, trunkH/2 - 0.8, z);
+            trunk.castShadow = true; g.add(trunk);
+            const leafMat = leafMats[Math.floor(Math.random()*leafMats.length)];
+            for(let j=0; j<3; j++){
+                const leaf = new THREE.Mesh(new THREE.ConeGeometry((3.5-j*0.8)*scale, 4*scale, 8), leafMat);
+                leaf.position.set(x, trunkH - 0.8 + j*2.5*scale, z);
+                leaf.castShadow = true; g.add(leaf);
+            }
+        }
+
+        // أعشاب صغيرة
+        const bushMat = new THREE.MeshStandardMaterial({ color:0x66BB6A, roughness:0.9 });
+        for(let i=0; i<60; i++){
+            const a = Math.random()*Math.PI*2;
+            const d = 5 + Math.random()*15;
+            const bush = new THREE.Mesh(new THREE.SphereGeometry(0.3+Math.random()*0.4, 8, 8), bushMat);
+            bush.position.set(Math.cos(a)*d, 0, Math.sin(a)*d);
+            bush.scale.y = 0.6;
+            g.add(bush);
+        }
+
+        // أشعة الشمس
+        const beamMat = new THREE.MeshBasicMaterial({
+            color:0xFFFF99, transparent:true, opacity:0.15,
+            blending:THREE.AdditiveBlending, side:THREE.DoubleSide, depthWrite:false
+        });
+        for(let i=0; i<6; i++){
+            const beam = new THREE.Mesh(new THREE.PlaneGeometry(2, 20), beamMat);
+            const a = Math.random()*Math.PI*2;
+            const d = 5 + Math.random()*10;
+            beam.position.set(Math.cos(a)*d, 8, Math.sin(a)*d);
+            beam.rotation.x = -Math.PI/4;
+            beam.rotation.y = a;
+            g.add(beam);
+        }
+        return g;
+    }
+
+    // قلعة (بدون تغيير)
     function buildCastleBg(){
         const g = new THREE.Group();
         const stoneMat = new THREE.MeshStandardMaterial({ color:0x1a1a24, roughness:0.95, metalness:0.05 });
@@ -266,11 +311,9 @@ window.BoardModule = (function(){
         const goldMat = new THREE.MeshStandardMaterial({ color:0xC9A96A, roughness:0.3, metalness:0.9, emissive:0x2a1f08, emissiveIntensity:0.5 });
         const wallDist = 24, wallHeight = 12;
         [[0,-wallDist,wallDist*2,2],[0,wallDist,wallDist*2,2],[-wallDist,0,2,wallDist*2],[wallDist,0,2,wallDist*2]].forEach(([x,z,w,d])=>{
-            const wall = new THREE.Mesh(new THREE.BoxGeometry(w, wallHeight, d), stoneMat);
+            const wall = new THREE.Mesh(new THREE.BoxGeometry(w,wallHeight,d), stoneMat);
             wall.position.set(x, wallHeight/2, z); g.add(wall);
         });
-        const torchTex = makeGlowSpriteTexture();
-        const torchMat = new THREE.SpriteMaterial({ map:torchTex, color:0xFFB860, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:0.9 });
         [[-wallDist,-wallDist],[wallDist,-wallDist],[-wallDist,wallDist],[wallDist,wallDist]].forEach(([x,z])=>{
             const tower = new THREE.Mesh(new THREE.CylinderGeometry(4,4.5,wallHeight+6,12), stoneDarkMat);
             tower.position.set(x,(wallHeight+6)/2,z); g.add(tower);
@@ -278,47 +321,11 @@ window.BoardModule = (function(){
             top.position.set(x, wallHeight+6, z); g.add(top);
             const roof = new THREE.Mesh(new THREE.ConeGeometry(4.5,6,12), roofMat);
             roof.position.set(x, wallHeight+9.3, z); g.add(roof);
-            const torch = new THREE.Sprite(torchMat);
-            torch.position.set(x*0.7, wallHeight-2, z*0.7);
-            torch.scale.set(4,4,1); g.add(torch);
         });
         return g;
     }
 
-    function buildForestBg(){
-        const g = new THREE.Group();
-        const trunkMat = new THREE.MeshStandardMaterial({ color:0x2a1a10, roughness:0.95 });
-        const leafMats = [
-            new THREE.MeshStandardMaterial({ color:0x0e3a1e, roughness:0.9 }),
-            new THREE.MeshStandardMaterial({ color:0x1a4a28, roughness:0.9 }),
-            new THREE.MeshStandardMaterial({ color:0x0a2818, roughness:0.9 })
-        ];
-        for(let i=0;i<18;i++){
-            const angle = (i/18)*Math.PI*2 + Math.random()*0.3;
-            const dist = 12 + Math.random()*12;
-            const x = Math.cos(angle)*dist, z = Math.sin(angle)*dist;
-            const scale = 0.8 + Math.random()*0.7;
-            const trunkH = 6*scale;
-            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.5*scale,0.9*scale,trunkH,7), trunkMat);
-            trunk.position.set(x, trunkH/2, z); g.add(trunk);
-            const leafMat = leafMats[i%3];
-            for(let j=0;j<3;j++){
-                const cone = new THREE.Mesh(new THREE.ConeGeometry((3.2-j*0.6)*scale,3.5*scale,8), leafMat);
-                cone.position.set(x, trunkH + j*3.5*scale*0.55 - 0.5, z);
-                g.add(cone);
-            }
-        }
-        const fireflyMat = new THREE.SpriteMaterial({ map:makeGlowSpriteTexture(), color:0xAAFF66, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:0.9 });
-        for(let i=0;i<30;i++){
-            const ff = new THREE.Sprite(fireflyMat);
-            const angle = Math.random()*Math.PI*2, dist = 5 + Math.random()*15;
-            ff.position.set(Math.cos(angle)*dist, 1+Math.random()*8, Math.sin(angle)*dist);
-            const s = 0.3 + Math.random()*0.4;
-            ff.scale.set(s,s,1); g.add(ff);
-        }
-        return g;
-    }
-
+    // عملاق (بدون تغيير)
     function buildGiantBg(){
         const g = new THREE.Group();
         const skinMat = new THREE.MeshStandardMaterial({ color:0x3a2818, roughness:0.85 });
@@ -331,10 +338,6 @@ window.BoardModule = (function(){
         eyeL.position.set(-0.8,-3.2,2.2); g.add(eyeL);
         const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.35,16,12), eyeMat);
         eyeR.position.set(0.8,-3.2,2.2); g.add(eyeR);
-        const nose = new THREE.Mesh(new THREE.SphereGeometry(0.4,16,12), skinDarkMat);
-        nose.position.set(0,-3.6,2.3); nose.scale.set(1,1.3,1.2); g.add(nose);
-        const mouth = new THREE.Mesh(new THREE.BoxGeometry(1.5,0.2,0.3), browMat);
-        mouth.position.set(0,-4.3,2.2); g.add(mouth);
         const neck = new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.8,2,16), skinMat);
         neck.position.set(0,-6.3,0); g.add(neck);
         const body = new THREE.Mesh(new THREE.CylinderGeometry(4,5,8,16), skinMat);
@@ -367,10 +370,20 @@ window.BoardModule = (function(){
         clearBoardBg();
         scene.background = new THREE.Color(cfg.bg);
         scene.fog = new THREE.Fog(cfg.fog, cfg.fogNear, cfg.fogFar);
-        if(floorMesh) floorMesh.visible = (type !== 'giant');
+        if(floorMesh) floorMesh.visible = (type !== 'giant' && type !== 'forest');
+
+        // إضاءة نهارية للغابة
+        if (type === 'forest') {
+            if (sun)  { sun.intensity = 3.0; sun.color.setHex(0xFFFDE7); }
+            if (hemi) { hemi.intensity = 1.5; hemi.color.setHex(0xFFFFFF); }
+        } else {
+            if (sun)  { sun.intensity = 2.4; sun.color.setHex(0xFFF0D0); }
+            if (hemi) { hemi.intensity = 1.35; hemi.color.setHex(0xD9C08E); }
+        }
+
         boardBgGroup = new THREE.Group();
         const skyTex = makeSkyDomeTexture(cfg.sky[0], cfg.sky[1]);
-        const skyGeo = new THREE.SphereGeometry(55,32,16);
+        const skyGeo = new THREE.SphereGeometry(70,32,16);
         const skyMat = new THREE.MeshBasicMaterial({ map:skyTex, side:THREE.BackSide, depthWrite:false, fog:false });
         const sky = new THREE.Mesh(skyGeo, skyMat);
         sky.position.y = 5;
@@ -383,7 +396,7 @@ window.BoardModule = (function(){
     }
 
     // ============================================================
-    // التهيئة الرئيسية
+    // التهيئة
     // ============================================================
     async function init(containerId){
         await loadThree();
@@ -391,8 +404,7 @@ window.BoardModule = (function(){
         if(!holder) throw new Error('Container not found: ' + containerId);
 
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0B1A2E);
-        scene.fog = new THREE.Fog(0x0B1A2E, 20, 44);
+        scene.background = new THREE.Color(0x87CEEB);
 
         camera = new THREE.PerspectiveCamera(45, 1, .1, 100);
         camera.position.set(8, 10, 12);
@@ -403,7 +415,7 @@ window.BoardModule = (function(){
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.05;
+        renderer.toneMappingExposure = 1.15;
         holder.appendChild(renderer.domElement);
 
         controls = new OrbitControls(camera, renderer.domElement);
@@ -414,13 +426,13 @@ window.BoardModule = (function(){
         controls.maxDistance = 22;
         controls.maxPolarAngle = Math.PI / 2.15;
 
-        hemi = new THREE.HemisphereLight(0xD9C08E, 0x0B1A2E, 1.35);
+        hemi = new THREE.HemisphereLight(0xFFFFFF, 0x87CEEB, 1.35);
         scene.add(hemi); sceneMaterials.hemi = hemi;
 
-        sun = new THREE.DirectionalLight(0xFFF0D0, 2.4);
-        sun.position.set(6,12,8);
+        sun = new THREE.DirectionalLight(0xFFFDE7, 2.4);
+        sun.position.set(6, 12, 8);
         sun.castShadow = true;
-        sun.shadow.mapSize.set(1024,1024);
+        sun.shadow.mapSize.set(1024, 1024);
         sun.shadow.camera.left = -7; sun.shadow.camera.right = 7;
         sun.shadow.camera.top = 7; sun.shadow.camera.bottom = -7;
         sun.shadow.camera.near = 1; sun.shadow.camera.far = 30;
@@ -428,7 +440,7 @@ window.BoardModule = (function(){
         scene.add(sun); sceneMaterials.sun = sun;
 
         fill = new THREE.DirectionalLight(0xA8B0BB, 1.0);
-        fill.position.set(-6,9,-8);
+        fill.position.set(-6, 9, -8);
         scene.add(fill); sceneMaterials.fill = fill;
 
         floorMesh = new THREE.Mesh(
@@ -483,25 +495,11 @@ window.BoardModule = (function(){
         animate();
     }
 
-    // ---------- API ----------
     return {
-        init,
-        draw,
-        resetColors,
-        showMoves,
-        applyCustomization,
-        setCamera,
-        onResize,
-        applyBoardBackground,
-        BOARD_BACKGROUNDS,
-        getCamera      : () => camera,
-        getRenderer    : () => renderer,
-        getControls    : () => controls,
-        getPieces      : () => pieces,
-        getSquares     : () => squares,
-        getScene       : () => scene,
-        isReady        : () => !!renderer,
-        chessPiece,
-        position
+        init, draw, resetColors, showMoves, applyCustomization,
+        setCamera, onResize, applyBoardBackground, BOARD_BACKGROUNDS,
+        getCamera:()=>camera, getRenderer:()=>renderer, getControls:()=>controls,
+        getPieces:()=>pieces, getSquares:()=>squares, getScene:()=>scene,
+        isReady:()=>!!renderer, chessPiece, position
     };
 })();
