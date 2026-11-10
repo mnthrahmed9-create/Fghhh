@@ -1,9 +1,9 @@
 // ═══════════════════════════════════════════════════════════════
-// 🎁 نظام المكافآت - Monster Chess
+// 🎁 نظام المكافآت - Monster Chess (ملف مستقل)
 // ═══════════════════════════════════════════════════════════════
 //
-// 📝 للتعديل: غيّر الأرقام في القسم الأول (CONFIG) فقط
-// 🚫 لا تعدل القسم الثاني (ENGINE) أبداً
+// 📝 للتعديل: غيّر الأرقام في القسم 1 (CONFIG) فقط
+// 🚫 لا تعدل القسم 2 (ENGINE)
 //
 // ═══════════════════════════════════════════════════════════════
 
@@ -16,7 +16,6 @@
 
     const CONFIG = {
 
-        // -------- الرصيد الابتدائي للاعب الجديد --------
         initialBalance: {
             coins: 2500,
             gems: 50,
@@ -24,10 +23,8 @@
             level: 1
         },
 
-        // -------- مفتاح التخزين (لا تغيره بعد النشر) --------
         storageKey: 'monsterChess_rewards_v1',
 
-        // -------- المكافآت اليومية (7 أيام) --------
         dailyRewards: [
             { day: 1, icon: '🪙', amount: 200,  type: 'coins' },
             { day: 2, icon: '🪙', amount: 400,  type: 'coins' },
@@ -38,13 +35,12 @@
             { day: 7, icon: '💎', amount: 30,   type: 'gems'  }
         ],
 
-        // -------- الصناديق --------
         chests: {
             hero: {
                 name: 'صندوق الأبطال',
                 icon: '🧰',
                 cost: { coins: 500 },
-                cooldownMs: 60 * 60 * 1000,  // ساعة واحدة
+                cooldownMs: 60 * 60 * 1000,
                 loot: [
                     { type: 'coins',    min: 300, max: 1200, weight: 60 },
                     { type: 'gems',     min: 3,   max: 15,   weight: 30 },
@@ -53,7 +49,6 @@
             }
         },
 
-        // -------- الإنجازات --------
         achievements: {
             win1:      { name: '🐲 أول انتصار',  target: 1,  reward: 300  },
             win5:      { name: '👑 ملك الرقعة',   target: 5,  reward: 1500 },
@@ -61,7 +56,6 @@
             play20:    { name: '🎮 محارب مثابر',  target: 20, reward: 2000 }
         },
 
-        // -------- المهام اليومية --------
         missions: {
             play1:    { name: '🎮 العب مباراة',  target: 1, reward: 100 },
             win1:     { name: '🏆 اربح مباراة',  target: 1, reward: 250 },
@@ -70,10 +64,9 @@
     };
 
     // ╔═══════════════════════════════════════════════════════════╗
-    // ║  🚫 القسم 2: المحرك (لا تعدل - يحتوي منطق النظام) 🚫     ║
+    // ║  🚫 القسم 2: المحرك (لا تعدل) 🚫                          ║
     // ╚═══════════════════════════════════════════════════════════╝
 
-    // ---- التخزين الآمن ----
     const Storage = (function(){
         try {
             localStorage.setItem('__rw__','1');
@@ -81,15 +74,10 @@
             return localStorage;
         } catch(e) {
             const mem = {};
-            return {
-                getItem: k => (k in mem ? mem[k] : null),
-                setItem: (k,v) => { mem[k]=v; },
-                removeItem: k => { delete mem[k]; }
-            };
+            return { getItem:k=>(k in mem?mem[k]:null), setItem:(k,v)=>{mem[k]=v;}, removeItem:k=>{delete mem[k];} };
         }
     })();
 
-    // ---- الحالة ----
     let state = null;
 
     function freshState(){
@@ -123,9 +111,7 @@
             for (const cur in CONFIG.initialBalance) {
                 if (!(cur in state.balance)) state.balance[cur] = CONFIG.initialBalance[cur];
             }
-        } catch(e) {
-            state = freshState();
-        }
+        } catch(e) { state = freshState(); }
     }
 
     function save(){
@@ -136,21 +122,16 @@
         try { window.dispatchEvent(new CustomEvent('rewards:'+name, {detail})); } catch(e){}
     }
 
-    function notifyBalance(){
-        emit('balanceChanged', { ...state.balance });
-    }
+    function notifyBalance(){ emit('balanceChanged', { ...state.balance }); }
 
-    // ---- العملات ----
     function addCurrency(type, amount, reason){
         if (!(type in state.balance)) return false;
         state.balance[type] = Math.max(0, state.balance[type] + amount);
-        save();
-        notifyBalance();
+        save(); notifyBalance();
         emit('currencyAdded', { type, amount, reason: reason || '' });
         return true;
     }
 
-    // ---- المكافآت اليومية ----
     function getDailyStatus(){
         const today = new Date().toDateString();
         let canClaim = state.lastDailyClaim !== today;
@@ -183,7 +164,6 @@
         return { ok:true, reward: rw };
     }
 
-    // ---- الصناديق ----
     function canOpenChest(id){
         const chest = CONFIG.chests[id];
         if (!chest) return { ok:false, error:'غير موجود' };
@@ -215,8 +195,7 @@
         const amount = Math.floor(chosen.min + Math.random() * (chosen.max - chosen.min + 1));
         addCurrency(chosen.type, amount, 'صندوق ' + chest.name);
         state.chests[id] = Date.now();
-        save();
-        notifyBalance();
+        save(); notifyBalance();
         return { ok:true, reward:{ type:chosen.type, amount }, chestName: chest.name };
     }
 
@@ -233,7 +212,6 @@
         };
     }
 
-    // ---- الإنجازات ----
     function updateAchievement(key, delta){
         const cfg = CONFIG.achievements[key];
         if (!cfg) return;
@@ -270,7 +248,6 @@
         });
     }
 
-    // ---- المهام ----
     function updateMission(key, delta){
         const cfg = CONFIG.missions[key];
         if (!cfg) return;
@@ -307,15 +284,12 @@
         });
     }
 
-    // ---- إعادة تعيين ----
     function resetAll(){
         state = freshState();
-        save();
-        notifyBalance();
+        save(); notifyBalance();
         emit('reset');
     }
 
-    // ---- الواجهة العامة ----
     window.RewardsSystem = {
         getBalance: () => ({ ...state.balance }),
         getDailyStatus,
@@ -337,7 +311,6 @@
         config: CONFIG
     };
 
-    // ---- تشغيل ----
     load();
     notifyBalance();
     console.log('[Rewards] ✅ جاهز | الرصيد:', state.balance);
