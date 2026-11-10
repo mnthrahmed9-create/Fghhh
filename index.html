@@ -952,8 +952,15 @@ const files = "abcdefgh";
 function position(sq){ return { x: files.indexOf(sq[0]) - 3.5, z: Number(sq[1]) - 4.5 }; }
 
 // =========================================================
-// ربط نظام المكافآت
+// ربط نظام المكافآت — الجزء المُعدّل
 // =========================================================
+
+// ⭐ دالة آمنة للوصول إلى RewardsSystem
+function getRS() {
+    return (typeof window.RewardsSystem !== 'undefined' && window.RewardsSystem) ? window.RewardsSystem : null;
+}
+
+// ⭐ تحديث الواجهة عند تغيير الرصيد
 window.addEventListener('rewards:balanceChanged', (e) => {
     const b = e.detail;
     const setText = (id, v) => {
@@ -966,33 +973,79 @@ window.addEventListener('rewards:balanceChanged', (e) => {
     setText('ui-level', b.level);
 });
 
+// ⭐ إشعار عند إضافة عملة
 window.addEventListener('rewards:currencyAdded', (e) => {
     const d = e.detail;
-    if (d.amount <= 0) return;
+    if (!d || d.amount <= 0) return;
     const icons = { coins: '🪙', gems: '💎', trophies: '⭐' };
-    showToast(`🎉 +${d.amount} ${icons[d.type] || ''} — ${d.reason}`);
+    showToast(`🎉 +${d.amount} ${icons[d.type] || ''} — ${d.reason || ''}`);
 });
 
+// ⭐ إعادة رسم تلقائي للواجهات عند أي تغيير في الحالة
+window.addEventListener('rewards:stateChanged', () => {
+    try {
+        if (typeof window.renderDailyRewardsUI === 'function') window.renderDailyRewardsUI();
+        if (typeof window.renderAchievementsUI === 'function') window.renderAchievementsUI();
+        if (typeof window.renderMissionsUI === 'function') window.renderMissionsUI();
+        if (typeof window.renderChestUI === 'function') window.renderChestUI();
+    } catch (e) { /* تجاهل */ }
+});
+
+// ⭐ إشعار ترقية المستوى
+window.addEventListener('rewards:levelUp', (e) => {
+    if (e.detail && e.detail.level) {
+        showToast(`🎊 ترقية! وصلت إلى المستوى ${e.detail.level}`);
+    }
+});
+
+// ⭐ إشعار اكتمال إنجاز
+window.addEventListener('rewards:achievementCompleted', (e) => {
+    if (e.detail && e.detail.def) {
+        showToast(`🏆 إنجاز مكتمل: ${e.detail.def.name}`);
+    }
+});
+
+// ⭐ إشعار اكتمال مهمة
+window.addEventListener('rewards:missionCompleted', (e) => {
+    if (e.detail && e.detail.def) {
+        showToast(`📅 مهمة مكتملة: ${e.detail.def.name}`);
+    }
+});
+
+// ---------- واجهات المكافآت ----------
+
 window.renderDailyRewardsUI = function(){
+    const rs = getRS();
+    if (!rs) return;
     const grid = document.getElementById('rewardGrid');
     if (!grid) return;
-    const status = RewardsSystem.getDailyStatus();
+    const status = rs.getDailyStatus();
     grid.innerHTML = '';
     status.rewards.forEach((rw, i) => {
         const cls = rw.claimed ? 'claimed' : (rw.isCurrent ? 'current' : '');
-        const btn = rw.claimed
-            ? `<button class="claim-btn" disabled>تم ✓</button>`
-            : rw.isCurrent
-                ? `<button class="claim-btn" data-claim="${i}">استلام</button>`
-                : `<button class="claim-btn" disabled>مغلق</button>`;
+        let btn;
+        if (rw.claimed) {
+            btn = `<button class="claim-btn" disabled>تم ✓</button>`;
+        } else if (rw.isCurrent) {
+            btn = `<button class="claim-btn" data-claim="${i}">استلام</button>`;
+        } else {
+            btn = `<button class="claim-btn" disabled>مغلق</button>`;
+        }
         grid.innerHTML += `<div class="reward-day ${cls}"><div class="day-num">اليوم ${rw.day}</div><span class="day-icon">${rw.icon}</span><div class="day-val">${rw.amount}</div>${btn}</div>`;
     });
     grid.querySelectorAll('[data-claim]').forEach(b => {
         b.addEventListener('click', () => {
             const i = parseInt(b.dataset.claim, 10);
-            const res = RewardsSystem.claimDaily(i);
-            if (res.ok) renderDailyRewardsUI();
-            else showToast('❌ ' + res.error);
+            const res = rs.claimDaily(i);
+            if (res.ok) {
+                renderDailyRewardsUI();
+                if (res.reward) {
+                    const icons = { coins: '🪙', gems: '💎' };
+                    showToast(`🎉 تم استلام: ${res.reward.amount} ${icons[res.reward.type] || ''}`);
+                }
+            } else {
+                showToast('❌ ' + (res.error || 'فشل'));
+            }
         });
     });
     const badge = document.getElementById('daily-badge');
@@ -1000,10 +1053,12 @@ window.renderDailyRewardsUI = function(){
 };
 
 window.renderAchievementsUI = function(){
+    const rs = getRS();
+    if (!rs) return;
     const list = document.getElementById('achievementsList');
     if (!list) return;
     list.innerHTML = '';
-    RewardsSystem.getAchievements().forEach(a => {
+    rs.getAchievements().forEach(a => {
         const btn = a.completed
             ? (a.claimed
                 ? `<button class="claim-btn" disabled>تم الاستلام</button>`
@@ -1020,18 +1075,24 @@ window.renderAchievementsUI = function(){
     });
     list.querySelectorAll('[data-ach]').forEach(b => {
         b.addEventListener('click', () => {
-            const res = RewardsSystem.claimAchievement(b.dataset.ach);
-            if (res.ok) renderAchievementsUI();
-            else showToast('❌ ' + res.error);
+            const res = rs.claimAchievement(b.dataset.ach);
+            if (res.ok) {
+                renderAchievementsUI();
+                showToast(`🎉 +${res.reward} 🪙`);
+            } else {
+                showToast('❌ ' + (res.error || 'فشل'));
+            }
         });
     });
 };
 
 window.renderMissionsUI = function(){
+    const rs = getRS();
+    if (!rs) return;
     const list = document.getElementById('missionsList');
     if (!list) return;
     list.innerHTML = '';
-    RewardsSystem.getMissions().forEach(m => {
+    rs.getMissions().forEach(m => {
         const btn = m.completed
             ? (m.claimed
                 ? `<button class="claim-btn" disabled>تم الاستلام</button>`
@@ -1048,18 +1109,24 @@ window.renderMissionsUI = function(){
     });
     list.querySelectorAll('[data-mis]').forEach(b => {
         b.addEventListener('click', () => {
-            const res = RewardsSystem.claimMission(b.dataset.mis);
-            if (res.ok) renderMissionsUI();
-            else showToast('❌ ' + res.error);
+            const res = rs.claimMission(b.dataset.mis);
+            if (res.ok) {
+                renderMissionsUI();
+                showToast(`🎉 +${res.reward} 🪙`);
+            } else {
+                showToast('❌ ' + (res.error || 'فشل'));
+            }
         });
     });
 };
 
 window.renderChestUI = function(){
+    const rs = getRS();
+    if (!rs) return;
     const timerEl = document.getElementById('chest-timer');
     const btn = document.getElementById('openChestBtn');
     if (!timerEl || !btn) return;
-    const status = RewardsSystem.getChestStatus('hero');
+    const status = rs.getChestStatus('hero');
     if (!status) return;
     if (status.ready) {
         timerEl.textContent = 'جاهز!';
@@ -1079,7 +1146,9 @@ window.renderChestUI = function(){
 };
 
 window.openChestAction = function(){
-    const res = RewardsSystem.openChest('hero');
+    const rs = getRS();
+    if (!rs) return;
+    const res = rs.openChest('hero');
     if (!res.ok) {
         showToast('❌ ' + (res.error || 'فشل'));
         return;
@@ -1088,7 +1157,7 @@ window.openChestAction = function(){
     if (chestEl) chestEl.classList.add('opened');
     setTimeout(() => {
         const icons = { coins: '🪙', gems: '💎', trophies: '⭐' };
-        showToast(`🎉 ${res.reward.amount} ${icons[res.reward.type]}`);
+        if (res.reward) showToast(`🎉 +${res.reward.amount} ${icons[res.reward.type] || ''}`);
         if (chestEl) chestEl.classList.remove('opened');
         renderChestUI();
     }, 600);
@@ -1124,6 +1193,7 @@ function savePlayerData(){
 
 function showToast(msg, duration=2400){
     const t = document.getElementById("toast");
+    if (!t) return;
     t.textContent = msg; t.classList.add("show");
     AudioEngine.sfxNotify();
     clearTimeout(window._toastTimer);
@@ -1532,9 +1602,12 @@ function makeMove(from, to, promotion="q"){
         if(!move) return false;
         if(move.captured && chess.turn()==='b'){
             playerCaptures++;
-            if(window.RewardsSystem){
-                RewardsSystem.updateMission('capture3', 1);
-                RewardsSystem.updateAchievement('capture10', 1);
+            // ⭐ تسجيل الإسقاط في نظام المكافآت
+            const rs = getRS();
+            if(rs){
+                if (typeof rs.recordCapture === 'function') rs.recordCapture(1);
+                rs.updateMission('capture3', 1);
+                rs.updateAchievement('capture10', 1);
             }
         }
         draw(); resetColors(); selected = null;
@@ -1703,7 +1776,14 @@ window.startGame = function(level){
     if(level) document.getElementById('level').value = level;
     if(!gameInitialized) initGame3D();
     window.newGame();
-    if(window.RewardsSystem) RewardsSystem.updateMission('play1', 1);
+    // ⭐ تسجيل بداية المباراة في نظام المكافآت
+    const rs = getRS();
+    if(rs){
+        if (typeof rs.recordGame === 'function') {
+            // لا نسجل النتيجة الآن، فقط المهمة
+        }
+        rs.updateMission('play1', 1);
+    }
     setTimeout(onResize, 50);
     setTimeout(onResize, 300);
 };
@@ -1800,6 +1880,7 @@ function attachCanvasEvents(){
     });
 }
 
+// ⭐ اعتراض updateStatus لتسجيل نتيجة المباراة
 const _origUpdateStatus = updateStatus;
 updateStatus = function(){
     const isOver = _origUpdateStatus();
@@ -1811,19 +1892,30 @@ updateStatus = function(){
             setTimeout(() => {
                 if(!gameStarted) return;
                 if(chess.fen() !== expectedFen) return;
+                const rs = getRS();
                 if(chess.turn() === 'b'){
+                    // اللاعب فاز
                     AudioEngine.sfxWin();
-                    if(window.RewardsSystem){
-                        RewardsSystem.updateMission('win1', 1);
-                        RewardsSystem.updateAchievement('win1', 1);
-                        RewardsSystem.updateAchievement('win5', 1);
-                        RewardsSystem.addCoins(500, 'مكافأة الفوز');
-                        RewardsSystem.addTrophies(30, 'نقاط ترتيب');
+                    if(rs){
+                        // ⭐ تسجيل الفوز الكامل
+                        if (typeof rs.recordGame === 'function') rs.recordGame('win');
+                        rs.updateMission('win1', 1);
+                        rs.updateAchievement('win1', 1);
+                        rs.updateAchievement('win5', 1);
+                        rs.updateAchievement('win20', 1);
+                        rs.addCoins(500, 'مكافأة الفوز');
+                        rs.addTrophies(30, 'نقاط ترتيب');
                     }
                 } else {
+                    // اللاعب خسر
                     AudioEngine.sfxLose();
+                    if(rs && typeof rs.recordGame === 'function') rs.recordGame('loss');
                 }
             }, 900);
+        } else if (chess.isStalemate() || chess.isDraw()) {
+            // ⭐ تسجيل التعادل
+            const rs = getRS();
+            if(rs && typeof rs.recordGame === 'function') rs.recordGame('draw');
         }
     }
     return isOver;
@@ -1835,11 +1927,41 @@ window.addEventListener("orientationchange", () => setTimeout(onResize, 180));
 attachSettingsListeners();
 loadPlayerData();
 
-renderDailyRewardsUI();
-renderAchievementsUI();
-renderMissionsUI();
-renderChestUI();
-setInterval(renderChestUI, 1000);
+// ⭐ الانتظار حتى يُحمّل rewards.js ثم تهيئة الواجهات
+function initRewardsUI() {
+    try {
+        renderDailyRewardsUI();
+        renderAchievementsUI();
+        renderMissionsUI();
+        renderChestUI();
+        setInterval(renderChestUI, 1000);
+    } catch (e) {
+        console.warn('[Rewards UI] فشل التهيئة، إعادة المحاولة...', e);
+        setTimeout(initRewardsUI, 500);
+    }
+}
+initRewardsUI();
+
+// ⭐ إعادة محاولة التهيئة إذا تأخر تحميل rewards.js
+setTimeout(() => {
+    const rs = getRS();
+    if (!rs) {
+        console.warn('[Rewards] لم يتم العثور على RewardsSystem');
+    } else {
+        // مزامنة الرصيد الحالي مع الواجهة
+        try {
+            const bal = rs.getBalance();
+            const setText = (id, v) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = (v || 0).toLocaleString();
+            };
+            setText('ui-coins', bal.coins);
+            setText('ui-gems', bal.gems);
+            setText('ui-trophies', bal.trophies);
+            setText('ui-level', bal.level);
+        } catch (e) { /* ignore */ }
+    }
+}, 300);
 
 setTimeout(() => {
     const s = document.getElementById("splash");
