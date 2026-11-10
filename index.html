@@ -7,10 +7,12 @@
 <title>Monster Chess 3D — المملكة</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800;900&display=swap" rel="stylesheet">
 
-<!-- ✅✅ نظام المكافآت — الترتيب الإلزامي ✅✅ -->
+<!-- ✅ نظام المكافآت -->
 <script src="rewards-config.js"></script>
 <script src="rewards.js"></script>
-<!-- ✅✅ نهاية التحميل ✅✅ -->
+
+<!-- ✅ ملف الرقعة والقطع -->
+<script src="board.js"></script>
 
 <style>
     :root{
@@ -34,10 +36,6 @@
         touch-action:manipulation;
     }
     .bg-castle{position:absolute;bottom:20%;left:50%;transform:translateX(-50%);font-size:25vw;opacity:.06;filter:blur(2px);z-index:0;pointer-events:none}
-    .bg-floor{position:absolute;bottom:0;width:100%;height:35%;background:repeating-linear-gradient(45deg,#0A0B10 0,#0A0B10 25px,#1A1A1E 25px,#1A1A1E 50px);transform:perspective(500px) rotateX(60deg);transform-origin:bottom;z-index:0;box-shadow:inset 0 20px 50px rgba(0,0,0,.85)}
-    .sky-sparkles{position:absolute;inset:0;z-index:1;pointer-events:none;overflow:hidden}
-    .sky-sparkles::before,.sky-sparkles::after{content:'';position:absolute;width:2px;height:2px;border-radius:50%;background:var(--silver);box-shadow:15vw 10vh 0 0 rgba(196,201,209,.35),30vw 25vh 0 0 rgba(196,201,209,.2),45vw 5vh 0 0 rgba(196,201,209,.4),60vw 15vh 0 0 rgba(196,201,209,.25),75vw 30vh 0 0 rgba(196,201,209,.35),88vw 8vh 0 0 rgba(196,201,209,.2);animation:twinkle 4s ease-in-out infinite alternate}
-    @keyframes twinkle{from{opacity:.3}to{opacity:.7}}
     .menu-top-bar{position:relative;z-index:10;display:flex;justify-content:space-between;align-items:flex-start;padding:15px}
     .profile-box{display:flex;align-items:center;background:linear-gradient(135deg,var(--charcoal-light),var(--charcoal));border:1.5px solid var(--champagne-dark);border-radius:15px;padding:5px 15px 5px 5px;box-shadow:0 4px 12px rgba(0,0,0,.5);cursor:pointer}
     .avatar-frame{width:50px;height:50px;border-radius:50%;background:radial-gradient(circle,var(--ivory),var(--ivory-dark));border:1.5px solid var(--silver);display:flex;justify-content:center;align-items:center;font-size:28px;box-shadow:0 0 8px rgba(201,169,106,.35);position:relative}
@@ -378,13 +376,10 @@
 <script>
 (function(){
     'use strict';
-
     window.__APP_BASE__ = (location.protocol === 'file:')
         ? (window.location.href.replace(/index\.html.*$/,'').replace(/[^\/]*$/,''))
         : './';
-
-    if (typeof CanvasRenderingContext2D !== 'undefined' &&
-        !CanvasRenderingContext2D.prototype.roundRect) {
+    if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
         CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r){
             this.beginPath();
             this.moveTo(x+r,y);
@@ -396,11 +391,8 @@
             return this;
         };
     }
-
-    window.__IMPORTMAP_SUPPORTED__ =
-        (typeof HTMLScriptElement.supports === 'function') &&
+    window.__IMPORTMAP_SUPPORTED__ = (typeof HTMLScriptElement.supports === 'function') &&
         HTMLScriptElement.supports('importmap');
-
     if (window.__IMPORTMAP_SUPPORTED__) {
         const im = document.createElement('script');
         im.type = 'importmap';
@@ -434,7 +426,6 @@
         };
         document.body.appendChild(umd);
     }
-
     window.SafeStorage = (function(){
         let mem = {};
         try {
@@ -460,12 +451,11 @@
 <!-- ============ الكود الرئيسي ============ -->
 <script type="module" id="mainModule">
 // ============ استيراد المكتبات ============
-let THREE, OrbitControls, Chess;
+let THREE, Chess;
 let EffectComposer, RenderPass, UnrealBloomPass, OutputPass;
 
 try {
     THREE = await import('three');
-    ({ OrbitControls } = await import('three/addons/controls/OrbitControls.js'));
     ({ Chess } = await import('chess'));
     ({ EffectComposer } = await import('three/addons/postprocessing/EffectComposer.js'));
     ({ RenderPass }     = await import('three/addons/postprocessing/RenderPass.js'));
@@ -473,28 +463,20 @@ try {
     ({ OutputPass }     = await import('three/addons/postprocessing/OutputPass.js'));
 } catch(err) {
     console.warn('[module] فشل التحميل، محاولة UMD:', err);
-    if (window.THREE && window.THREE.OrbitControls) {
+    if (window.THREE && window.Chess) {
         THREE = window.THREE;
-        OrbitControls = window.THREE.OrbitControls;
         Chess = window.Chess;
         EffectComposer = null; RenderPass = null; UnrealBloomPass = null; OutputPass = null;
     } else {
         await new Promise(res => window.addEventListener('libsReady', res, { once: true }));
         THREE = window.THREE;
-        OrbitControls = window.THREE.OrbitControls;
         Chess = window.Chess;
         EffectComposer = null; RenderPass = null; UnrealBloomPass = null; OutputPass = null;
     }
 }
 
 // ============ الإعدادات الافتراضية ============
-const DEFAULT_SETTINGS = {
-    sound: true,
-    music: true,
-    soundVolume: 0.70,
-    musicVolume: 0.30
-};
-
+const DEFAULT_SETTINGS = { sound: true, music: true, soundVolume: 0.70, musicVolume: 0.30 };
 const DEFAULT_CUSTOM = {
     lightSquare:'#E8DEC8', darkSquare:'#1E2A3D',
     frame:'#2A2C33', accent:'#C9A96A',
@@ -506,194 +488,6 @@ let currentCustom = { ...DEFAULT_CUSTOM };
 let playerData = {
     customization:{ ...DEFAULT_CUSTOM },
     settings: { ...DEFAULT_SETTINGS }
-};
-
-// =========================================================
-// خلفيات الرقعة
-// =========================================================
-const BOARD_BACKGROUNDS = {
-    castle: { name: '🏰 قلعة', bg: 0x080a15, fog: 0x101828, fogNear: 22, fogFar: 62, sky: ['#0a1428', '#1a2840'] },
-    forest: { name: '🌲 غابة', bg: 0x020804, fog: 0x06180c, fogNear: 14, fogFar: 45, sky: ['#061410', '#0a1a10'] },
-    giant:  { name: '🗿 عملاق', bg: 0x0a1a30, fog: 0x1a3050, fogNear: 30, fogFar: 90, sky: ['#1a3050', '#0a1a30'] }
-};
-
-let boardBgGroup = null;
-let floorMesh = null;
-let _lastAppliedBg = null;
-
-function makeGlowSpriteTexture(){
-    const size = 128;
-    const c = document.createElement('canvas');
-    c.width = c.height = size;
-    const ctx = c.getContext('2d');
-    const g = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
-    g.addColorStop(0, 'rgba(255,240,180,1)');
-    g.addColorStop(0.4, 'rgba(255,180,80,0.5)');
-    g.addColorStop(1, 'rgba(255,140,40,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, size, size);
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-}
-
-function makeSkyDomeTexture(top, bottom){
-    const c = document.createElement('canvas');
-    c.width = 256; c.height = 256;
-    const ctx = c.getContext('2d');
-    const grad = ctx.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0, top);
-    grad.addColorStop(1, bottom);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 256, 256);
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-}
-
-function buildCastleBg() {
-    const g = new THREE.Group();
-    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x1a1a24, roughness: 0.95, metalness: 0.05 });
-    const stoneDarkMat = new THREE.MeshStandardMaterial({ color: 0x0e0e16, roughness: 0.98, metalness: 0.02 });
-    const roofMat = new THREE.MeshStandardMaterial({ color: 0x3a1a10, roughness: 0.7, metalness: 0.3 });
-    const goldMat = new THREE.MeshStandardMaterial({ color: 0xC9A96A, roughness: 0.3, metalness: 0.9, emissive: 0x2a1f08, emissiveIntensity: 0.5 });
-    const wallDist = 24, wallHeight = 12;
-    [[0,-wallDist,wallDist*2,2],[0,wallDist,wallDist*2,2],[-wallDist,0,2,wallDist*2],[wallDist,0,2,wallDist*2]].forEach(([x,z,w,d])=>{
-        const wall = new THREE.Mesh(new THREE.BoxGeometry(w, wallHeight, d), stoneMat);
-        wall.position.set(x, wallHeight/2, z); g.add(wall);
-    });
-    const torchTex = makeGlowSpriteTexture();
-    const torchMat = new THREE.SpriteMaterial({ map: torchTex, color: 0xFFB860, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9 });
-    [[-wallDist,-wallDist],[wallDist,-wallDist],[-wallDist,wallDist],[wallDist,wallDist]].forEach(([x, z]) => {
-        const tower = new THREE.Mesh(new THREE.CylinderGeometry(4, 4.5, wallHeight + 6, 12), stoneDarkMat);
-        tower.position.set(x, (wallHeight + 6)/2, z); g.add(tower);
-        const top = new THREE.Mesh(new THREE.CylinderGeometry(4.3, 4.3, 0.6, 12), goldMat);
-        top.position.set(x, wallHeight + 6, z); g.add(top);
-        const roof = new THREE.Mesh(new THREE.ConeGeometry(4.5, 6, 12), roofMat);
-        roof.position.set(x, wallHeight + 9.3, z); g.add(roof);
-        const torch = new THREE.Sprite(torchMat);
-        torch.position.set(x * 0.7, wallHeight - 2, z * 0.7);
-        torch.scale.set(4, 4, 1); g.add(torch);
-    });
-    return g;
-}
-
-function buildForestBg() {
-    const g = new THREE.Group();
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: 0.95 });
-    const leafMats = [
-        new THREE.MeshStandardMaterial({ color: 0x0e3a1e, roughness: 0.9 }),
-        new THREE.MeshStandardMaterial({ color: 0x1a4a28, roughness: 0.9 }),
-        new THREE.MeshStandardMaterial({ color: 0x0a2818, roughness: 0.9 })
-    ];
-    for (let i = 0; i < 18; i++) {
-        const angle = (i / 18) * Math.PI * 2 + Math.random() * 0.3;
-        const dist = 12 + Math.random() * 12;
-        const x = Math.cos(angle) * dist, z = Math.sin(angle) * dist;
-        const scale = 0.8 + Math.random() * 0.7;
-        const trunkH = 6 * scale;
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.5 * scale, 0.9 * scale, trunkH, 7), trunkMat);
-        trunk.position.set(x, trunkH/2, z); g.add(trunk);
-        const leafMat = leafMats[i % 3];
-        for (let j = 0; j < 3; j++) {
-            const cone = new THREE.Mesh(new THREE.ConeGeometry((3.2 - j * 0.6) * scale, 3.5 * scale, 8), leafMat);
-            cone.position.set(x, trunkH + j * 3.5 * scale * 0.55 - 0.5, z);
-            g.add(cone);
-        }
-    }
-    const fireflyMat = new THREE.SpriteMaterial({ map: makeGlowSpriteTexture(), color: 0xAAFF66, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9 });
-    for (let i = 0; i < 30; i++) {
-        const ff = new THREE.Sprite(fireflyMat);
-        const angle = Math.random() * Math.PI * 2, dist = 5 + Math.random() * 15;
-        ff.position.set(Math.cos(angle) * dist, 1 + Math.random() * 8, Math.sin(angle) * dist);
-        const s = 0.3 + Math.random() * 0.4;
-        ff.scale.set(s, s, 1); g.add(ff);
-    }
-    return g;
-}
-
-function buildGiantBg() {
-    const g = new THREE.Group();
-    const skinMat = new THREE.MeshStandardMaterial({ color: 0x3a2818, roughness: 0.85 });
-    const skinDarkMat = new THREE.MeshStandardMaterial({ color: 0x1a1008, roughness: 0.9 });
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xFFD060 });
-    const browMat = new THREE.MeshStandardMaterial({ color: 0x1a0a04, roughness: 0.9 });
-    const head = new THREE.Mesh(new THREE.SphereGeometry(2.5, 24, 16), skinMat);
-    head.position.set(0, -3.4, 0); head.scale.set(1.2, 1.0, 1.1); g.add(head);
-    const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 12), eyeMat);
-    eyeL.position.set(-0.8, -3.2, 2.2); g.add(eyeL);
-    const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 12), eyeMat);
-    eyeR.position.set(0.8, -3.2, 2.2); g.add(eyeR);
-    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 12), skinDarkMat);
-    nose.position.set(0, -3.6, 2.3); nose.scale.set(1, 1.3, 1.2); g.add(nose);
-    const mouth = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.2, 0.3), browMat);
-    mouth.position.set(0, -4.3, 2.2); g.add(mouth);
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.8, 2, 16), skinMat);
-    neck.position.set(0, -6.3, 0); g.add(neck);
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(4, 5, 8, 16), skinMat);
-    body.position.set(0, -14, 0); g.add(body);
-    return g;
-}
-
-function clearBoardBg() {
-    if (!boardBgGroup) return;
-    scene.remove(boardBgGroup);
-    const disposedGeos = new Set(), disposedMats = new Set();
-    boardBgGroup.traverse(obj => {
-        if (obj.geometry && !disposedGeos.has(obj.geometry)) { obj.geometry.dispose(); disposedGeos.add(obj.geometry); }
-        if (obj.material) {
-            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-            mats.forEach(m => {
-                if (!disposedMats.has(m)) {
-                    if (m.map) m.map.dispose();
-                    m.dispose(); disposedMats.add(m);
-                }
-            });
-        }
-    });
-    boardBgGroup = null;
-}
-
-function applyBoardBackground(type) {
-    const cfg = BOARD_BACKGROUNDS[type];
-    if (!cfg || !scene) return;
-    clearBoardBg();
-    scene.background = new THREE.Color(cfg.bg);
-    scene.fog = new THREE.Fog(cfg.fog, cfg.fogNear, cfg.fogFar);
-    if (floorMesh) floorMesh.visible = (type !== 'giant');
-    boardBgGroup = new THREE.Group();
-    const skyTex = makeSkyDomeTexture(cfg.sky[0], cfg.sky[1]);
-    const skyGeo = new THREE.SphereGeometry(55, 32, 16);
-    const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, depthWrite: false, fog: false });
-    const sky = new THREE.Mesh(skyGeo, skyMat);
-    sky.position.y = 5;
-    boardBgGroup.add(sky);
-    if (type === 'castle') boardBgGroup.add(buildCastleBg());
-    else if (type === 'forest') boardBgGroup.add(buildForestBg());
-    else if (type === 'giant') boardBgGroup.add(buildGiantBg());
-    scene.add(boardBgGroup);
-    _lastAppliedBg = type;
-}
-
-function renderBackgroundButtons(){
-    const grid = document.getElementById('backgroundGrid');
-    if(!grid) return;
-    grid.innerHTML = '';
-    Object.keys(BOARD_BACKGROUNDS).forEach(type => {
-        const cfg = BOARD_BACKGROUNDS[type];
-        const active = currentCustom.boardBg === type;
-        grid.innerHTML += `<button class="bg-btn ${active ? 'active' : ''}" onclick="setBoardBackground('${type}')">${cfg.name}</button>`;
-    });
-}
-
-window.setBoardBackground = function(type){
-    if(!BOARD_BACKGROUNDS[type]) return;
-    currentCustom.boardBg = type;
-    applyBoardBackground(type);
-    savePlayerData();
-    renderBackgroundButtons();
-    showToast(`🖼️ تم اختيار: ${BOARD_BACKGROUNDS[type].name}`);
-    AudioEngine.sfxClick();
 };
 
 // =========================================================
@@ -728,7 +522,6 @@ const AudioEngine = {
             this.updateVolumes();
         } catch (e) {}
     },
-
     updateVolumes() {
         if (!this.ctx) return;
         const s = playerData.settings;
@@ -739,10 +532,8 @@ const AudioEngine = {
             this.musicGain.gain.setTargetAtTime(mv, this.ctx.currentTime, 0.10);
         } catch (e) {}
     },
-
     resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(()=>{}); },
     canPlaySfx() { return playerData.settings.sound; },
-
     playTone(freq, opts = {}) {
         if (!this.ctx) return;
         this.resume();
@@ -757,7 +548,6 @@ const AudioEngine = {
         osc.connect(g); g.connect(destination);
         osc.start(startTime); osc.stop(startTime + attack + duration + 0.05);
     },
-
     playNoise(duration = 0.1, gain = 0.3, startTime) {
         if (!this.ctx) return;
         const sr = this.ctx.sampleRate;
@@ -773,7 +563,6 @@ const AudioEngine = {
         src.connect(filter).connect(g).connect(this.sfxGain);
         src.start(startTime || this.ctx.currentTime);
     },
-
     sfxClick() { if (!this.canPlaySfx() || !this.ctx) return; this.resume();
         const now = this.ctx.currentTime;
         this.playTone(1200, { duration: 0.05, type: 'sine', gain: 0.25, startTime: now });
@@ -817,7 +606,6 @@ const AudioEngine = {
         this.playTone(880, { duration: 0.18, type: 'sine', gain: 0.28, startTime: now });
         this.playTone(1320, { duration: 0.22, type: 'sine', gain: 0.16, startTime: now + 0.08 });
     },
-
     startMusic() {
         this.init();
         if (!this.ctx || this.musicPlaying) return;
@@ -908,7 +696,6 @@ function attachSettingsListeners() {
     const musicEl = document.getElementById('musicSetting');
     const soundVolEl = document.getElementById('soundVolume');
     const musicVolEl = document.getElementById('musicVolume');
-
     if (soundEl) soundEl.addEventListener('change', e => {
         playerData.settings.sound = e.target.checked;
         AudioEngine.updateVolumes(); savePlayerData();
@@ -938,20 +725,11 @@ function attachSettingsListeners() {
 let gameStarted = false;
 let gameInitialized = false;
 let gameOverHandled = false;
-let scene, camera, renderer, controls, board, pieces, holder, sun;
-let squares = [];
-let cameraTween = null;
-const sceneMaterials = {
-    base:null, edge:null, top:null, rail:null, railTop:null,
-    post:null, knob:null, hemi:null, fill:null, sun:null
-};
-
 const chess = new Chess();
 let selected = null, thinking = false, pendingPromotion = null;
 let snapshots = [], playerCaptures = 0;
-const files = "abcdefgh";
-
-function position(sq){ return { x: files.indexOf(sq[0]) - 3.5, z: Number(sq[1]) - 4.5 }; }
+let _lastAppliedBg = null;
+let _canvasEventsAttached = false;
 
 // =========================================================
 // ربط نظام المكافآت
@@ -971,14 +749,12 @@ window.addEventListener('rewards:balanceChanged', (e) => {
     setText('ui-trophies', b.trophies);
     setText('ui-level', b.level);
 });
-
 window.addEventListener('rewards:currencyAdded', (e) => {
     const d = e.detail;
     if (!d || d.amount <= 0) return;
     const icons = { coins: '🪙', gems: '💎', trophies: '⭐' };
     showToast(`🎉 +${d.amount} ${icons[d.type] || ''} — ${d.reason || ''}`);
 });
-
 window.addEventListener('rewards:stateChanged', () => {
     try {
         if (typeof window.renderDailyRewardsUI === 'function') window.renderDailyRewardsUI();
@@ -987,23 +763,14 @@ window.addEventListener('rewards:stateChanged', () => {
         if (typeof window.renderChestUI === 'function') window.renderChestUI();
     } catch (e) {}
 });
-
 window.addEventListener('rewards:levelUp', (e) => {
-    if (e.detail && e.detail.level) {
-        showToast(`🎊 ترقية! وصلت إلى المستوى ${e.detail.level}`);
-    }
+    if (e.detail && e.detail.level) showToast(`🎊 ترقية! وصلت إلى المستوى ${e.detail.level}`);
 });
-
 window.addEventListener('rewards:achievementCompleted', (e) => {
-    if (e.detail && e.detail.def) {
-        showToast(`🏆 إنجاز مكتمل: ${e.detail.def.name}`);
-    }
+    if (e.detail && e.detail.def) showToast(`🏆 إنجاز مكتمل: ${e.detail.def.name}`);
 });
-
 window.addEventListener('rewards:missionCompleted', (e) => {
-    if (e.detail && e.detail.def) {
-        showToast(`📅 مهمة مكتملة: ${e.detail.def.name}`);
-    }
+    if (e.detail && e.detail.def) showToast(`📅 مهمة مكتملة: ${e.detail.def.name}`);
 });
 
 // ---------- واجهات المكافآت ----------
@@ -1017,13 +784,9 @@ window.renderDailyRewardsUI = function(){
     status.rewards.forEach((rw, i) => {
         const cls = rw.claimed ? 'claimed' : (rw.isCurrent ? 'current' : '');
         let btn;
-        if (rw.claimed) {
-            btn = `<button class="claim-btn" disabled>تم ✓</button>`;
-        } else if (rw.isCurrent) {
-            btn = `<button class="claim-btn" data-claim="${i}">استلام</button>`;
-        } else {
-            btn = `<button class="claim-btn" disabled>مغلق</button>`;
-        }
+        if (rw.claimed) btn = `<button class="claim-btn" disabled>تم ✓</button>`;
+        else if (rw.isCurrent) btn = `<button class="claim-btn" data-claim="${i}">استلام</button>`;
+        else btn = `<button class="claim-btn" disabled>مغلق</button>`;
         grid.innerHTML += `<div class="reward-day ${cls}"><div class="day-num">اليوم ${rw.day}</div><span class="day-icon">${rw.icon}</span><div class="day-val">${rw.amount}</div>${btn}</div>`;
     });
     grid.querySelectorAll('[data-claim]').forEach(b => {
@@ -1036,9 +799,7 @@ window.renderDailyRewardsUI = function(){
                     const icons = { coins: '🪙', gems: '💎' };
                     showToast(`🎉 تم استلام: ${res.reward.amount} ${icons[res.reward.type] || ''}`);
                 }
-            } else {
-                showToast('❌ ' + (res.error || 'فشل'));
-            }
+            } else showToast('❌ ' + (res.error || 'فشل'));
         });
     });
     const badge = document.getElementById('daily-badge');
@@ -1053,15 +814,11 @@ window.renderAchievementsUI = function(){
     list.innerHTML = '';
     rs.getAchievements().forEach(a => {
         const btn = a.completed
-            ? (a.claimed
-                ? `<button class="claim-btn" disabled>تم الاستلام</button>`
-                : `<button class="claim-btn" data-ach="${a.key}">استلام 🪙${a.reward}</button>`)
+            ? (a.claimed ? `<button class="claim-btn" disabled>تم الاستلام</button>`
+                         : `<button class="claim-btn" data-ach="${a.key}">استلام 🪙${a.reward}</button>`)
             : '';
         list.innerHTML += `<div class="achieve-row">
-            <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
-                <b>${a.name}</b>
-                <span class="prog">${a.progress}/${a.target}</span>
-            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px;"><b>${a.name}</b><span class="prog">${a.progress}/${a.target}</span></div>
             <div class="progress-bar"><div class="progress-fill" style="width:${a.percent}%"></div></div>
             ${btn ? `<div style="margin-top:5px;text-align:center;">${btn}</div>` : ''}
         </div>`;
@@ -1069,12 +826,8 @@ window.renderAchievementsUI = function(){
     list.querySelectorAll('[data-ach]').forEach(b => {
         b.addEventListener('click', () => {
             const res = rs.claimAchievement(b.dataset.ach);
-            if (res.ok) {
-                renderAchievementsUI();
-                showToast(`🎉 +${res.reward} 🪙`);
-            } else {
-                showToast('❌ ' + (res.error || 'فشل'));
-            }
+            if (res.ok) { renderAchievementsUI(); showToast(`🎉 +${res.reward} 🪙`); }
+            else showToast('❌ ' + (res.error || 'فشل'));
         });
     });
 };
@@ -1087,15 +840,11 @@ window.renderMissionsUI = function(){
     list.innerHTML = '';
     rs.getMissions().forEach(m => {
         const btn = m.completed
-            ? (m.claimed
-                ? `<button class="claim-btn" disabled>تم الاستلام</button>`
-                : `<button class="claim-btn" data-mis="${m.key}">استلام 🪙${m.reward}</button>`)
+            ? (m.claimed ? `<button class="claim-btn" disabled>تم الاستلام</button>`
+                         : `<button class="claim-btn" data-mis="${m.key}">استلام 🪙${m.reward}</button>`)
             : '';
         list.innerHTML += `<div class="mission-row">
-            <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
-                <b>${m.name}</b>
-                <span class="reward">${m.progress}/${m.target}</span>
-            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px;"><b>${m.name}</b><span class="reward">${m.progress}/${m.target}</span></div>
             <div class="progress-bar"><div class="progress-fill" style="width:${m.percent}%"></div></div>
             ${btn ? `<div style="margin-top:5px;text-align:center;">${btn}</div>` : ''}
         </div>`;
@@ -1103,12 +852,8 @@ window.renderMissionsUI = function(){
     list.querySelectorAll('[data-mis]').forEach(b => {
         b.addEventListener('click', () => {
             const res = rs.claimMission(b.dataset.mis);
-            if (res.ok) {
-                renderMissionsUI();
-                showToast(`🎉 +${res.reward} 🪙`);
-            } else {
-                showToast('❌ ' + (res.error || 'فشل'));
-            }
+            if (res.ok) { renderMissionsUI(); showToast(`🎉 +${res.reward} 🪙`); }
+            else showToast('❌ ' + (res.error || 'فشل'));
         });
     });
 };
@@ -1142,10 +887,7 @@ window.openChestAction = function(){
     const rs = getRS();
     if (!rs) return;
     const res = rs.openChest('hero');
-    if (!res.ok) {
-        showToast('❌ ' + (res.error || 'فشل'));
-        return;
-    }
+    if (!res.ok) { showToast('❌ ' + (res.error || 'فشل')); return; }
     const chestEl = document.getElementById('chestVisual');
     if (chestEl) chestEl.classList.add('opened');
     setTimeout(() => {
@@ -1169,7 +911,7 @@ function loadPlayerData(){
         }catch(e){ console.error("Load error", e); }
     }
     currentCustom = { ...DEFAULT_CUSTOM, ...playerData.customization };
-    if(!currentCustom.boardBg || !BOARD_BACKGROUNDS[currentCustom.boardBg]) currentCustom.boardBg = 'castle';
+    _lastAppliedBg = currentCustom.boardBg || 'castle';
     renderPresets();
     renderColorPickers();
     renderCameraButtons();
@@ -1214,220 +956,28 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
 });
 
 // =========================================================
-// 3D Setup
+// تهيئة لوحة الشطرنج (عبر BoardModule)
 // =========================================================
-function initGame3D(){
-    if(gameInitialized) return;
-    gameInitialized = true;
-    holder = document.getElementById("game");
-    squares = [];
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0B1A2E);
-    scene.fog = new THREE.Fog(0x0B1A2E, 20, 44);
-    camera = new THREE.PerspectiveCamera(45, 1, .1, 100);
-    camera.position.set(8, 10, 12);
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
-    holder.appendChild(renderer.domElement);
-
-    controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, .3, 0);
-    controls.enableDamping = true;
-    controls.enablePan = false;
-    controls.minDistance = 7;
-    controls.maxDistance = 22;
-    controls.maxPolarAngle = Math.PI / 2.15;
-
-    const hemi = new THREE.HemisphereLight(0xD9C08E, 0x0B1A2E, 1.35);
-    scene.add(hemi); sceneMaterials.hemi = hemi;
-
-    sun = new THREE.DirectionalLight(0xFFF0D0, 2.4);
-    sun.position.set(6, 12, 8);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    sun.shadow.camera.left = -7; sun.shadow.camera.right = 7;
-    sun.shadow.camera.top = 7; sun.shadow.camera.bottom = -7;
-    sun.shadow.camera.near = 1; sun.shadow.camera.far = 30;
-    sun.shadow.bias = -0.0005;
-    scene.add(sun); sceneMaterials.sun = sun;
-
-    const fill = new THREE.DirectionalLight(0xA8B0BB, 1.0);
-    fill.position.set(-6, 9, -8);
-    scene.add(fill); sceneMaterials.fill = fill;
-
-    const floor = new THREE.Mesh(
-        new THREE.PlaneGeometry(200, 200),
-        new THREE.MeshStandardMaterial({ color: 0x0A0B10, roughness: .95 })
-    );
-    floor.rotation.x = -Math.PI/2; floor.position.y = -.85;
-    floor.receiveShadow = true;
-    scene.add(floor);
-    floorMesh = floor;
-
-    sceneMaterials.base = new THREE.MeshStandardMaterial({ color: 0x141519, roughness: .55, metalness: .3 });
-    const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(9.8, .9, 9.8), sceneMaterials.base);
-    baseMesh.position.y = -.45; baseMesh.castShadow = true; baseMesh.receiveShadow = true;
-    scene.add(baseMesh);
-
-    sceneMaterials.edge = new THREE.MeshStandardMaterial({ color: 0x050810, roughness: .5, metalness: .5 });
-    const edgeBand = new THREE.Mesh(new THREE.BoxGeometry(9.9, .12, 9.9), sceneMaterials.edge);
-    edgeBand.position.y = -.07; edgeBand.castShadow = true; edgeBand.receiveShadow = true;
-    scene.add(edgeBand);
-
-    sceneMaterials.top = new THREE.MeshStandardMaterial({ color: 0x132B45, roughness: .5, metalness: .25 });
-    const tabletop = new THREE.Mesh(new THREE.BoxGeometry(9.5, .06, 9.5), sceneMaterials.top);
-    tabletop.position.y = .03; tabletop.receiveShadow = true;
-    scene.add(tabletop);
-
-    sceneMaterials.rail = new THREE.MeshStandardMaterial({ color: 0x2A2C33, roughness: .45, metalness: .45 });
-    sceneMaterials.railTop = new THREE.MeshStandardMaterial({ color: 0xC9A96A, roughness: .35, metalness: .7 });
-    sceneMaterials.post = new THREE.MeshStandardMaterial({ color: 0x141519, roughness: .35, metalness: .55 });
-    sceneMaterials.knob = new THREE.MeshStandardMaterial({ color: 0xC9A96A, roughness: .3, metalness: .8 });
-
-    const railH = .22, railThick = .32, halfBoard = 4;
-    [
-        [new THREE.BoxGeometry(8+railThick*2, railH, railThick), 0, halfBoard+railThick/2],
-        [new THREE.BoxGeometry(8+railThick*2, railH, railThick), 0, -halfBoard-railThick/2],
-        [new THREE.BoxGeometry(railThick, railH, 8), -halfBoard-railThick/2, 0],
-        [new THREE.BoxGeometry(railThick, railH, 8), halfBoard+railThick/2, 0]
-    ].forEach(([geo, x, z]) => {
-        const m = new THREE.Mesh(geo, sceneMaterials.rail);
-        m.position.set(x, railH/2 + .06, z);
-        m.castShadow = true; m.receiveShadow = true;
-        scene.add(m);
-    });
-
-    board = new THREE.Group();
-    pieces = new THREE.Group();
-    scene.add(board); scene.add(pieces);
-
-    makeBoard();
-    applyCustomization(currentCustom, false);
-    animate();
+async function ensureBoardReady(){
+    if (window.BoardModule.isReady()) return;
+    await window.BoardModule.init('game');
+    // ضبط الخلفية الحالية
+    if (currentCustom.boardBg) {
+        window.BoardModule.applyBoardBackground(currentCustom.boardBg);
+        _lastAppliedBg = currentCustom.boardBg;
+    }
     attachCanvasEvents();
+    onResize();
 }
 
-function makeBoard(){
-    squares = [];
-    for(let rank = 8; rank >= 1; rank--){
-        for(let f = 0; f < 8; f++){
-            const sq = files[f] + rank;
-            const p = position(sq);
-            const isDark = (rank + f) % 2;
-            const color = isDark ? currentCustom.darkSquare : currentCustom.lightSquare;
-            const mat = new THREE.MeshStandardMaterial({
-                color: new THREE.Color(color),
-                roughness: isDark ? .6 : .55,
-                metalness: isDark ? .2 : .08
-            });
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(.99, .15, .99), mat);
-            mesh.position.set(p.x, .15, p.z);
-            mesh.receiveShadow = true;
-            mesh.userData.square = sq;
-            mesh.userData.isDark = isDark;
-            board.add(mesh);
-            squares.push(mesh);
-        }
-    }
-}
+function draw(){ window.BoardModule.draw(chess); }
+function resetColors(){ window.BoardModule.resetColors(); }
+function showMoves(from){ window.BoardModule.showMoves(chess, from); }
+function onResize(){ window.BoardModule.onResize(); }
 
-function chessPiece(type, color){
-    const g = new THREE.Group();
-    const isWhite = color === 'w';
-    const mat = new THREE.MeshStandardMaterial({ color: isWhite?0xF2EAD9:0x22242A, roughness:.5, metalness:.18 });
-    const darkMat = new THREE.MeshStandardMaterial({ color: isWhite?0xE0D5BD:0x141519, roughness:.6, metalness:.15 });
-    const accentMat = new THREE.MeshStandardMaterial({ color: isWhite?0xC9A96A:0x9C7A4E, roughness:.35, metalness:.7 });
-
-    const base1 = new THREE.Mesh(new THREE.CylinderGeometry(.32,.36,.1,24), mat);
-    base1.position.y = .05; base1.castShadow = true; base1.receiveShadow = true; g.add(base1);
-    const base2 = new THREE.Mesh(new THREE.CylinderGeometry(.26,.32,.06,24), darkMat);
-    base2.position.y = .13; base2.castShadow = true; g.add(base2);
-
-    if(type==='p'){
-        const b = new THREE.Mesh(new THREE.CylinderGeometry(.1,.22,.4,20), mat); b.position.y=.36; b.castShadow=true; g.add(b);
-        const c = new THREE.Mesh(new THREE.TorusGeometry(.14,.03,8,20), accentMat); c.position.y=.56; c.rotation.x=Math.PI/2; c.castShadow=true; g.add(c);
-        const h = new THREE.Mesh(new THREE.SphereGeometry(.17,20,16), mat); h.position.y=.74; h.castShadow=true; g.add(h);
-    } else if(type==='r'){
-        const b = new THREE.Mesh(new THREE.CylinderGeometry(.2,.26,.55,20), mat); b.position.y=.44; b.castShadow=true; g.add(b);
-        const t = new THREE.Mesh(new THREE.CylinderGeometry(.28,.24,.22,20), mat); t.position.y=.82; t.castShadow=true; g.add(t);
-        for(let i=0;i<4;i++){ const a=i*Math.PI/2+Math.PI/4; const cr=new THREE.Mesh(new THREE.BoxGeometry(.1,.14,.1),mat); cr.position.set(Math.cos(a)*.21,1,Math.sin(a)*.21); cr.castShadow=true; g.add(cr); }
-    } else if(type==='n'){
-        const b=new THREE.Mesh(new THREE.CylinderGeometry(.17,.26,.5,20),mat); b.position.y=.41; b.castShadow=true; g.add(b);
-        const n=new THREE.Mesh(new THREE.CylinderGeometry(.13,.18,.38,16),mat); n.position.set(.06,.76,0); n.rotation.z=-.4; n.castShadow=true; g.add(n);
-        const h=new THREE.Mesh(new THREE.BoxGeometry(.18,.26,.3),mat); h.position.set(.16,.96,.02); h.rotation.z=-.4; h.castShadow=true; g.add(h);
-    } else if(type==='b'){
-        const b=new THREE.Mesh(new THREE.CylinderGeometry(.13,.24,.5,20),mat); b.position.y=.41; b.castShadow=true; g.add(b);
-        const c=new THREE.Mesh(new THREE.TorusGeometry(.15,.035,8,20),accentMat); c.position.y=.68; c.rotation.x=Math.PI/2; c.castShadow=true; g.add(c);
-        const h=new THREE.Mesh(new THREE.SphereGeometry(.17,20,16),mat); h.position.y=.88; h.scale.set(1,1.3,1); h.castShadow=true; g.add(h);
-    } else if(type==='q'){
-        const b=new THREE.Mesh(new THREE.CylinderGeometry(.15,.28,.6,20),mat); b.position.y=.46; b.castShadow=true; g.add(b);
-        const c=new THREE.Mesh(new THREE.TorusGeometry(.18,.04,8,20),accentMat); c.position.y=.78; c.rotation.x=Math.PI/2; c.castShadow=true; g.add(c);
-        const tp=new THREE.Mesh(new THREE.SphereGeometry(.07,16,12),accentMat); tp.position.y=1.16; tp.castShadow=true; g.add(tp);
-    } else if(type==='k'){
-        const b=new THREE.Mesh(new THREE.CylinderGeometry(.15,.28,.65,20),mat); b.position.y=.48; b.castShadow=true; g.add(b);
-        const cv=new THREE.Mesh(new THREE.BoxGeometry(.07,.26,.07),accentMat); cv.position.y=1.16; cv.castShadow=true; g.add(cv);
-        const ch=new THREE.Mesh(new THREE.BoxGeometry(.22,.07,.07),accentMat); ch.position.y=1.18; ch.castShadow=true; g.add(ch);
-    }
-    return g;
-}
-
-function disposePiecesGroup(){
-    if(!pieces) return;
-    const seenGeos = new Set(), seenMats = new Set();
-    pieces.traverse(obj => {
-        if(obj.geometry && !seenGeos.has(obj.geometry)){ obj.geometry.dispose(); seenGeos.add(obj.geometry); }
-        if(obj.material){
-            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-            mats.forEach(m => {
-                if(seenMats.has(m)) return;
-                if(m.map) m.map.dispose();
-                m.dispose(); seenMats.add(m);
-            });
-        }
-    });
-    pieces.clear();
-}
-
-function draw(){
-    if(!pieces) return;
-    disposePiecesGroup();
-    const state = chess.board();
-    for(let r=0;r<8;r++){
-        for(let f=0;f<8;f++){
-            const p = state[r][f]; if(!p) continue;
-            const sq = files[f] + (8-r);
-            const pos = position(sq);
-            const obj = chessPiece(p.type, p.color);
-            obj.position.set(pos.x, .15, pos.z);
-            obj.userData.square = sq;
-            obj.userData.color = p.color;
-            pieces.add(obj);
-        }
-    }
-    pieces.updateMatrixWorld(true);
-}
-
-function resetColors(){
-    squares.forEach(s => {
-        s.material.color.set(s.userData.isDark ? currentCustom.darkSquare : currentCustom.lightSquare);
-    });
-}
-
-function showMoves(from){
-    resetColors();
-    if(!from) return;
-    const moves = chess.moves({ square: from, verbose: true });
-    moves.forEach(m => {
-        const sq = squares.find(x => x.userData.square === m.to);
-        if(sq) sq.material.color.setHex(0xA8894F);
-    });
-}
-
+// =========================================================
+// الألوان / التخصيص
+// =========================================================
 const PRESETS = [
     { id:'marbleGold',      name:'رخامي + ذهبي',       cfg:{ lightSquare:'#EDE5D5', darkSquare:'#1A1A1E', frame:'#0B0B0E', accent:'#D4AF37', base:'#08080A', lightColor:'#FFE4B0' } },
     { id:'ivoryCharcoal',   name:'عاجي + فحمي',         cfg:{ lightSquare:'#F2EAD9', darkSquare:'#1A1A1E', frame:'#2A2C33', accent:'#8A919C', base:'#141519', lightColor:'#F5F5FA' } },
@@ -1444,12 +994,12 @@ const COLOR_LABELS = {
 };
 
 const CAMERA_PRESETS = {
-    top:     { pos:[0.01, 15, 0.01], target:[0,0,0],    label:'علوي 90°' },
-    front:   { pos:[0, 5.5, 14],     target:[0,0.3,0],  label:'أمامي' },
-    side:    { pos:[14, 5.5, 0],     target:[0,0.3,0],  label:'جانبي' },
-    angle45: { pos:[10, 10, 10],     target:[0,0,0],    label:'45°' },
-    iso:     { pos:[9, 11, -9],      target:[0,0,0],    label:'Isometric' },
-    closeup: { pos:[3, 4.5, 5],      target:[0,0.3,0],  label:'تقريب' }
+    top:     { label:'علوي 90°' },
+    front:   { label:'أمامي' },
+    side:    { label:'جانبي' },
+    angle45: { label:'45°' },
+    iso:     { label:'Isometric' },
+    closeup: { label:'تقريب' }
 };
 
 function renderPresets(){
@@ -1490,10 +1040,33 @@ function renderCameraButtons(){
     if(!grid) return;
     grid.innerHTML = '';
     Object.keys(CAMERA_PRESETS).forEach(key => {
-        const c = CAMERA_PRESETS[key];
-        grid.innerHTML += `<button class="cam-btn" onclick="setCamera('${key}')">${c.label}</button>`;
+        grid.innerHTML += `<button class="cam-btn" onclick="setCamera('${key}')">${CAMERA_PRESETS[key].label}</button>`;
     });
 }
+
+function renderBackgroundButtons(){
+    const grid = document.getElementById('backgroundGrid');
+    if(!grid) return;
+    grid.innerHTML = '';
+    const bgs = window.BoardModule.BOARD_BACKGROUNDS;
+    Object.keys(bgs).forEach(type => {
+        const cfg = bgs[type];
+        const active = currentCustom.boardBg === type;
+        grid.innerHTML += `<button class="bg-btn ${active ? 'active' : ''}" onclick="setBoardBackground('${type}')">${cfg.name}</button>`;
+    });
+}
+
+window.setBoardBackground = function(type){
+    const bgs = window.BoardModule.BOARD_BACKGROUNDS;
+    if(!bgs[type]) return;
+    currentCustom.boardBg = type;
+    if (window.BoardModule.isReady()) window.BoardModule.applyBoardBackground(type);
+    _lastAppliedBg = type;
+    savePlayerData();
+    renderBackgroundButtons();
+    showToast(`🖼️ تم اختيار: ${bgs[type].name}`);
+    AudioEngine.sfxClick();
+};
 
 window.onColorChange = function(key, value){
     currentCustom[key] = value;
@@ -1522,58 +1095,35 @@ window.resetCustomization = function(){
 
 function applyCustomization(cfg, animate){
     currentCustom = { ...cfg };
-    if(!gameInitialized) return;
-    squares.forEach(s => {
-        s.material.color.set(s.userData.isDark ? cfg.darkSquare : cfg.lightSquare);
-    });
-    if(sceneMaterials.rail) sceneMaterials.rail.color.set(cfg.frame);
-    if(sceneMaterials.railTop) sceneMaterials.railTop.color.set(cfg.accent);
-    if(sceneMaterials.knob) sceneMaterials.knob.color.set(cfg.accent);
-    if(sceneMaterials.post) sceneMaterials.post.color.set(cfg.base);
-    if(sceneMaterials.base) sceneMaterials.base.color.set(cfg.base);
-    if(sceneMaterials.edge) sceneMaterials.edge.color.set(cfg.base);
-    if(sceneMaterials.top) sceneMaterials.top.color.set(cfg.base);
-    if(sceneMaterials.sun) sceneMaterials.sun.color.set(cfg.lightColor);
-    if(sceneMaterials.fill) sceneMaterials.fill.color.set(cfg.lightColor);
-    if(sceneMaterials.hemi) sceneMaterials.hemi.color.set(cfg.lightColor);
-
+    if(!window.BoardModule.isReady()) return;
+    window.BoardModule.applyCustomization(cfg);
     Object.keys(COLOR_LABELS).forEach(key => {
         const el = document.getElementById('picker-' + key);
         if(el) el.value = cfg[key];
     });
-
-    if(cfg.boardBg && cfg.boardBg !== _lastAppliedBg) applyBoardBackground(cfg.boardBg);
 }
 
 window.setCamera = function(preset){
-    const p = CAMERA_PRESETS[preset];
-    if(!p || !camera || !controls) return;
-    cameraTween = {
-        startPos: camera.position.clone(),
-        endPos: new THREE.Vector3(...p.pos),
-        startTarget: controls.target.clone(),
-        endTarget: new THREE.Vector3(...p.target),
-        startTime: performance.now(),
-        duration: 800
-    };
+    if (window.BoardModule.isReady()) window.BoardModule.setCamera(preset);
 };
 
-window.startPreview = function(){
+window.startPreview = async function(){
     AudioEngine.sfxClick();
-    const menu = document.getElementById('menuScreen');
-    const gameScreen = document.getElementById('gameScreen');
-    menu.style.display = 'none';
-    gameScreen.classList.add('active');
+    document.getElementById('menuScreen').style.display = 'none';
+    document.getElementById('gameScreen').classList.add('active');
     gameStarted = false;
     gameOverHandled = true;
-    if(!gameInitialized) initGame3D();
+    await ensureBoardReady();
     draw();
-    if(updateStatus) updateStatus();
+    updateStatus();
     setTimeout(onResize, 50);
     setTimeout(onResize, 300);
     setTimeout(() => openModal('customization'), 150);
 };
 
+// =========================================================
+// منطق اللعبة
+// =========================================================
 function updateStatus(){
     const status = document.getElementById("status");
     if(chess.isCheckmate()){
@@ -1697,9 +1247,28 @@ function executePlayerMove(from, to, promotion){
     }, 350);
 }
 
+// =========================================================
+// التقاط النقر
+// =========================================================
+function attachCanvasEvents(){
+    if (_canvasEventsAttached) return;
+    _canvasEventsAttached = true;
+    const canvas = window.BoardModule.getRenderer().domElement;
+    let dx = 0, dy = 0;
+    canvas.addEventListener("pointerdown", e => { dx = e.clientX; dy = e.clientY; });
+    canvas.addEventListener("pointerup", e => {
+        if(Math.hypot(e.clientX - dx, e.clientY - dy) < 10) onClick(e);
+    });
+}
+
 function onClick(event){
     if(!gameStarted || thinking || chess.isGameOver() || pendingPromotion) return;
     if(chess.turn() !== "w") return;
+
+    const camera = window.BoardModule.getCamera();
+    const squares = window.BoardModule.getSquares();
+    const pieces  = window.BoardModule.getPieces();
+    const renderer = window.BoardModule.getRenderer();
 
     const rect = renderer.domElement.getBoundingClientRect();
     const pointer = new THREE.Vector2(
@@ -1756,7 +1325,10 @@ function onClick(event){
     }
 }
 
-window.startGame = function(level){
+// =========================================================
+// أزرار اللعبة
+// =========================================================
+window.startGame = async function(level){
     AudioEngine.sfxClick();
     closeModal('difficulty');
     const names = { easy:'سهل', medium:'متوسط', hard:'صعب' };
@@ -1766,13 +1338,10 @@ window.startGame = function(level){
     gameStarted = true;
     gameOverHandled = false;
     if(level) document.getElementById('level').value = level;
-    if(!gameInitialized) initGame3D();
+    await ensureBoardReady();
     window.newGame();
     const rs = getRS();
-    if(rs){
-        if (typeof rs.recordGame === 'function') { /* no-op */ }
-        rs.updateMission('play1', 1);
-    }
+    if(rs) rs.updateMission('play1', 1);
     setTimeout(onResize, 50);
     setTimeout(onResize, 300);
 };
@@ -1802,7 +1371,7 @@ window.newGame = function(){
     const promo = document.getElementById("promotion");
     if(promo) promo.style.display = "none";
     document.getElementById("moves").textContent = "سجل الحركات سيظهر هنا";
-    if(gameInitialized){ draw(); resetColors(); }
+    if(window.BoardModule.isReady()){ draw(); resetColors(); }
     updateStatus();
 };
 
@@ -1814,7 +1383,7 @@ window.undoMove = function(){
     selected = null;
     pendingPromotion = null;
     document.getElementById("promotion").style.display = "none";
-    if(gameInitialized){ draw(); resetColors(); }
+    if(window.BoardModule.isReady()){ draw(); resetColors(); }
     document.getElementById("moves").textContent = snap.history.length ? snap.history.join("  ") : "سجل الحركات سيظهر هنا";
     updateStatus();
     AudioEngine.sfxClick();
@@ -1833,41 +1402,12 @@ window.cancelPromotion = function(){
     pendingPromotion = null;
     document.getElementById("promotion").style.display = "none";
     selected = null;
-    if(gameInitialized) resetColors();
+    if(window.BoardModule.isReady()) resetColors();
     AudioEngine.sfxClick();
 };
 
-function onResize(){
-    if(!holder || !renderer || !camera) return;
-    const w = holder.clientWidth, h = holder.clientHeight;
-    if(w === 0 || h === 0) return;
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-    renderer.setSize(w, h);
-}
-
-function animate(){
-    requestAnimationFrame(animate);
-    if(cameraTween){
-        const t = Math.min(1, (performance.now() - cameraTween.startTime) / cameraTween.duration);
-        const ease = t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t;
-        camera.position.lerpVectors(cameraTween.startPos, cameraTween.endPos, ease);
-        controls.target.lerpVectors(cameraTween.startTarget, cameraTween.endTarget, ease);
-        if(t >= 1) cameraTween = null;
-    }
-    if(controls) controls.update();
-    if(renderer && scene && camera) renderer.render(scene, camera);
-}
-
-function attachCanvasEvents(){
-    if(!renderer) return;
-    const canvas = renderer.domElement;
-    let dx = 0, dy = 0;
-    canvas.addEventListener("pointerdown", e => { dx = e.clientX; dy = e.clientY; });
-    canvas.addEventListener("pointerup", e => {
-        if(Math.hypot(e.clientX - dx, e.clientY - dy) < 10) onClick(e);
-    });
-}
+window.addEventListener("resize", onResize);
+window.addEventListener("orientationchange", () => setTimeout(onResize, 180));
 
 const _origUpdateStatus = updateStatus;
 updateStatus = function(){
@@ -1905,9 +1445,6 @@ updateStatus = function(){
     return isOver;
 };
 
-window.addEventListener("resize", onResize);
-window.addEventListener("orientationchange", () => setTimeout(onResize, 180));
-
 attachSettingsListeners();
 loadPlayerData();
 
@@ -1927,9 +1464,7 @@ initRewardsUI();
 
 setTimeout(() => {
     const rs = getRS();
-    if (!rs) {
-        console.warn('[Rewards] لم يتم العثور على RewardsSystem');
-    } else {
+    if (rs) {
         try {
             const bal = rs.getBalance();
             const setText = (id, v) => {
@@ -1950,24 +1485,16 @@ setTimeout(() => {
 }, 3600);
 
 // =========================================================
-// الخلفية 3D
+// الخلفية 3D (خلف القائمة فقط)
 // =========================================================
 const CFG = {
   camPos      : new THREE.Vector3(0, 5.0, 18),
   camLook     : new THREE.Vector3(0, 6.0, -10),
   fov         : 58,
   fogColor    : 0x08141f,
-  fogDensity  : 0.0095,
-  boardSize   : 9.0,
-  castleZ     : -68,
-  castleScale : 1.0
+  fogDensity  : 0.0095
 };
-
-const COL = {
-  gold        : 0xc9a96a,
-  stone       : 0x0d1520,
-  stoneDark   : 0x060a11
-};
+const COL = { gold: 0xc9a96a, stone: 0x0d1520, stoneDark: 0x060a11 };
 
 const bgContainer = document.getElementById('bg3d');
 let bgRenderer = null;
