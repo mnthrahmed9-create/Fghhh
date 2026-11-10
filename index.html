@@ -6,6 +6,10 @@
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <title>Monster Chess 3D — المملكة</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800;900&display=swap" rel="stylesheet">
+
+<!-- ⭐ نظام المكافآت المستقل -->
+<script src="rewards.js"></script>
+
 <style>
     :root{
         --navy-deep:#0B1A2E;--navy:#132B45;--navy-light:#1E3A5F;
@@ -171,14 +175,9 @@
     #splash .tagline{margin-top:22px;color:var(--silver);font-size:14px;font-weight:700;letter-spacing:14px;opacity:0;animation:tagIn .9s ease 1.4s forwards}
     @keyframes tagIn{to{opacity:1}}
     @media (max-width:400px){.btn-main h3{font-size:19px}.game-title{font-size:12px}.preset-grid{gap:5px}.preset-btn .preset-name{font-size:8px}}
-
     #bg3d{position:fixed;inset:0;z-index:0;pointer-events:none;background:linear-gradient(180deg,#08141f 0%,#050a12 60%,#02040a 100%);}
     #bg3d canvas{display:block;width:100%!important;height:100%!important;}
     #bgVignette{position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse 118% 74% at 50% 44%,rgba(0,0,0,0) 30%,rgba(2,6,14,.30) 68%,rgba(0,0,0,.72) 100%),linear-gradient(to bottom,rgba(3,6,12,.42) 0%,rgba(0,0,0,0) 20%,rgba(0,0,0,0) 74%,rgba(2,4,9,.72) 100%);}
-    #bgGrain{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:.028;background-image:repeating-radial-gradient(circle at 17% 32%, #fff 0 1px, transparent 1px 3px),repeating-radial-gradient(circle at 73% 61%, #fff 0 1px, transparent 1px 3px);background-size:180px 180px, 240px 240px;animation:bgGrainShift 1.6s steps(3) infinite;}
-    @keyframes bgGrainShift{0%{transform:translate(0,0)}33%{transform:translate(-1px,1px)}66%{transform:translate(1px,-1px)}100%{transform:translate(0,0)}}
-
-    /* شاشة تحميل داخلية للمكتبات */
     #libLoader{position:fixed;inset:0;z-index:100000;background:#000;display:none;flex-direction:column;justify-content:center;align-items:center;color:#C9A96A;font-family:var(--font-main);font-weight:800;gap:14px}
     #libLoader.active{display:flex}
     #libLoader .spinner{width:52px;height:52px;border:4px solid rgba(201,169,106,.2);border-top-color:#C9A96A;border-radius:50%;animation:spin 1s linear infinite}
@@ -189,7 +188,6 @@
 
 <div id="bg3d"></div>
 <div id="bgVignette"></div>
-<div id="bgGrain"></div>
 
 <div id="splash">
     <div class="splash-vignette"></div>
@@ -205,15 +203,15 @@
 <div id="menuScreen" style="display:flex;flex-direction:column;height:100%;position:relative;">
     <header class="menu-top-bar">
         <div class="profile-box" onclick="showToast('الملف الشخصي')">
-            <div class="avatar-frame">🦁<div class="level-badge" id="ui-level">12</div></div>
+            <div class="avatar-frame">🦁<div class="level-badge" id="ui-level">1</div></div>
             <div class="profile-info">
                 <div class="profile-name">منتظر احمد</div>
-                <div class="profile-stars">⭐ <span id="ui-trophies">1250</span></div>
+                <div class="profile-stars">⭐ <span id="ui-trophies">0</span></div>
             </div>
         </div>
         <div class="resources">
-            <div class="res-pill coin"><div class="icon">🪙</div><span id="ui-coins">25,750</span><div class="btn-plus" onclick="openModal('store')">+</div></div>
-            <div class="res-pill gem"><div class="icon">💎</div><span id="ui-gems">450</span><div class="btn-plus" onclick="openModal('store')">+</div></div>
+            <div class="res-pill coin"><div class="icon">🪙</div><span id="ui-coins">0</span><div class="btn-plus" onclick="openModal('store')">+</div></div>
+            <div class="res-pill gem"><div class="icon">💎</div><span id="ui-gems">0</span><div class="btn-plus" onclick="openModal('store')">+</div></div>
             <div class="settings-btn" onclick="openModal('settings')">⚙️</div>
         </div>
     </header>
@@ -314,8 +312,6 @@
         <div class="modal-section-title">🎵 الموسيقى الخلفية</div>
         <div class="setting-row"><span>🎵 تشغيل الموسيقى</span><input type="checkbox" id="musicSetting" checked></div>
         <div class="setting-row"><span>🎶 مستوى الموسيقى</span><input type="range" id="musicVolume" min="0" max="100" value="30"></div>
-        <div class="modal-section-title">📳 التحكم</div>
-        <div class="setting-row"><span>📳 الاهتزاز</span><input type="checkbox" id="hapticSetting"></div>
         <button class="modal-close" onclick="closeModal('settings')">حفظ وإغلاق</button>
     </div>
 </div>
@@ -334,7 +330,7 @@
         <h2>🧰 صندوق الأبطال</h2>
         <p style="text-align:center;font-size:12px;color:var(--silver);">افتح الصندوق للحصول على جوائز عشوائية!</p>
         <div class="chest-anim-container"><div class="chest-anim" id="chestVisual">🎁</div></div>
-        <button id="openChestBtn" onclick="openChest()" style="width:100%;padding:14px;border-radius:15px;border:1.5px solid var(--champagne-dark);background:linear-gradient(to bottom,var(--champagne-light),var(--champagne-dark));color:var(--charcoal);font-weight:900;font-size:15px;cursor:pointer;margin-bottom:10px;">افتح الصندوق (🪙 500)</button>
+        <button id="openChestBtn" onclick="openChestAction()" style="width:100%;padding:14px;border-radius:15px;border:1.5px solid var(--champagne-dark);background:linear-gradient(to bottom,var(--champagne-light),var(--champagne-dark));color:var(--charcoal);font-weight:900;font-size:15px;cursor:pointer;margin-bottom:10px;">افتح الصندوق (🪙 500)</button>
         <button class="modal-close" onclick="closeModal('chest')">إغلاق</button>
     </div>
 </div>
@@ -376,56 +372,15 @@
 
 <div id="toast">رسالة</div>
 
-<!-- ============================================================
-     محمل المكتبات: يعمل محلياً (APK) أو من CDN (متصفح)
-     ============================================================ -->
+<!-- ============ محمل المكتبات ============ -->
 <script>
 (function(){
     'use strict';
 
-    // مسار القاعدة: ملف محلي في APK أو HTTP
     window.__APP_BASE__ = (location.protocol === 'file:')
         ? (window.location.href.replace(/index\.html.*$/,'').replace(/[^\/]*$/,''))
         : './';
 
-    // قائمة المكتبات المطلوبة (Three.js + Addons + Chess)
-    window.__LIBS__ = {
-        three: [
-            { url: 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js', type: 'module' },
-            { url: 'assets/modules/three.module.js', type: 'module' }
-        ],
-        orbit: [
-            { url: 'https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/controls/OrbitControls.js', type: 'module' },
-            { url: 'assets/modules/OrbitControls.js', type: 'module' }
-        ],
-        chess: [
-            { url: 'https://cdn.jsdelivr.net/npm/chess.js@1.4.0/+esm', type: 'module' },
-            { url: 'assets/modules/chess.module.js', type: 'module' }
-        ],
-        effectComposer: [
-            { url: 'https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/postprocessing/EffectComposer.js', type: 'module' },
-            { url: 'assets/modules/EffectComposer.js', type: 'module' }
-        ],
-        renderPass: [
-            { url: 'https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/postprocessing/RenderPass.js', type: 'module' },
-            { url: 'assets/modules/RenderPass.js', type: 'module' }
-        ],
-        unrealBloom: [
-            { url: 'https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/postprocessing/UnrealBloomPass.js', type: 'module' },
-            { url: 'assets/modules/UnrealBloomPass.js', type: 'module' }
-        ],
-        outputPass: [
-            { url: 'https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/postprocessing/OutputPass.js', type: 'module' },
-            { url: 'assets/modules/OutputPass.js', type: 'module' }
-        ]
-    };
-
-    // كشف دعم importmap
-    window.__IMPORTMAP_SUPPORTED__ =
-        (typeof HTMLScriptElement.supports === 'function') &&
-        HTMLScriptElement.supports('importmap');
-
-    // Polyfill احتياطي لـ roundRect
     if (typeof CanvasRenderingContext2D !== 'undefined' &&
         !CanvasRenderingContext2D.prototype.roundRect) {
         CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r){
@@ -440,32 +395,24 @@
         };
     }
 
-    // توليد الـ importmap ديناميكياً
-    function buildImportMap(){
-        // importmap يجب أن يكون ثابتاً لكن نضيف خريطة CDN كاحتياطي
-        return {
+    window.__IMPORTMAP_SUPPORTED__ =
+        (typeof HTMLScriptElement.supports === 'function') &&
+        HTMLScriptElement.supports('importmap');
+
+    if (window.__IMPORTMAP_SUPPORTED__) {
+        const im = document.createElement('script');
+        im.type = 'importmap';
+        im.textContent = JSON.stringify({
             imports: {
                 "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
                 "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
                 "chess": "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/+esm"
             }
-        };
-    }
-
-    // إدراج importmap قبل أي module script
-    if (window.__IMPORTMAP_SUPPORTED__) {
-        const im = document.createElement('script');
-        im.type = 'importmap';
-        im.textContent = JSON.stringify(buildImportMap());
-        // يجب إدراجه قبل أي type=module
-        const head = document.head;
-        const firstModule = head.querySelector('script[type="module"]');
-        if (firstModule) head.insertBefore(im, firstModule);
-        else head.appendChild(im);
+        });
+        document.head.appendChild(im);
     } else {
-        console.warn('[APK] importmap غير مدعوم، سيتم تحميل three.js كـ UMD');
+        console.warn('[APK] importmap غير مدعوم');
         document.getElementById('libLoader').classList.add('active');
-        // تحميل UMD
         const umd = document.createElement('script');
         umd.src = 'https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js';
         umd.onload = () => {
@@ -479,9 +426,6 @@
                     window.__USE_UMD__ = true;
                     window.dispatchEvent(new Event('libsReady'));
                 };
-                chessLib.onerror = () => {
-                    document.getElementById('libLoader').innerHTML = '<div style="color:#f66">فشل تحميل المكتبات. تأكد من اتصال الإنترنت أو ضعها في assets/modules/</div>';
-                };
                 document.body.appendChild(chessLib);
             };
             document.body.appendChild(oc);
@@ -489,7 +433,6 @@
         document.body.appendChild(umd);
     }
 
-    // SafeStorage للحماية من حجب localStorage
     window.SafeStorage = (function(){
         let mem = {};
         try {
@@ -502,7 +445,6 @@
                 removeItem: k => { try { localStorage.removeItem(k); } catch(e){ delete mem[k]; } }
             };
         } catch(e){
-            console.warn('localStorage محجوب — استخدام الذاكرة فقط');
             return {
                 getItem: k => (k in mem) ? mem[k] : null,
                 setItem: (k,v) => { mem[k]=v; },
@@ -513,11 +455,9 @@
 })();
 </script>
 
-<!-- ============================================================
-     الكود الرئيسي: يعمل بنظام module (module لـ CDN، وUMD fallback)
-     ============================================================ -->
+<!-- ============ الكود الرئيسي ============ -->
 <script type="module" id="mainModule">
-// ------------------- استيراد المكتبات -------------------
+// ============ استيراد المكتبات ============
 let THREE, OrbitControls, Chess;
 let EffectComposer, RenderPass, UnrealBloomPass, OutputPass;
 
@@ -530,16 +470,13 @@ try {
     ({ UnrealBloomPass }= await import('three/addons/postprocessing/UnrealBloomPass.js'));
     ({ OutputPass }     = await import('three/addons/postprocessing/OutputPass.js'));
 } catch(err) {
-    console.warn('[importmap module] فشل التحميل، محاولة UMD:', err);
-    // في حالة UMD: نستخدم THREE وOrbitControls وChess من window
+    console.warn('[module] فشل التحميل، محاولة UMD:', err);
     if (window.THREE && window.THREE.OrbitControls) {
         THREE = window.THREE;
         OrbitControls = window.THREE.OrbitControls;
         Chess = window.Chess;
-        // postprocessing ليس متاحاً في UMD، سنستبدله بـ no-op
         EffectComposer = null; RenderPass = null; UnrealBloomPass = null; OutputPass = null;
     } else {
-        // انتظر حدث libsReady
         await new Promise(res => window.addEventListener('libsReady', res, { once: true }));
         THREE = window.THREE;
         OrbitControls = window.THREE.OrbitControls;
@@ -548,13 +485,12 @@ try {
     }
 }
 
-// ------------------- الإعدادات الافتراضية -------------------
+// ============ الإعدادات الافتراضية ============
 const DEFAULT_SETTINGS = {
     sound: true,
     music: true,
     soundVolume: 0.70,
-    musicVolume: 0.30,
-    haptic: false
+    musicVolume: 0.30
 };
 
 const DEFAULT_CUSTOM = {
@@ -566,20 +502,8 @@ const DEFAULT_CUSTOM = {
 
 let currentCustom = { ...DEFAULT_CUSTOM };
 let playerData = {
-    coins:25750, gems:450, trophies:1250, level:12,
-    lastDailyClaim:"", dailyStreak:0, chestReadyAt:0,
     customization:{ ...DEFAULT_CUSTOM },
-    settings: { ...DEFAULT_SETTINGS },
-    achievements:{
-        win1:{progress:0,target:1,reward:500,claimed:false},
-        win5:{progress:0,target:5,reward:2000,claimed:false},
-        capture10:{progress:0,target:10,reward:1000,claimed:false}
-    },
-    missions:{
-        play1:{progress:0,target:1,reward:100,claimed:false},
-        win1:{progress:0,target:1,reward:250,claimed:false},
-        capture3:{progress:0,target:3,reward:150,claimed:false}
-    }
+    settings: { ...DEFAULT_SETTINGS }
 };
 
 // =========================================================
@@ -630,43 +554,21 @@ function buildCastleBg() {
     const stoneMat = new THREE.MeshStandardMaterial({ color: 0x1a1a24, roughness: 0.95, metalness: 0.05 });
     const stoneDarkMat = new THREE.MeshStandardMaterial({ color: 0x0e0e16, roughness: 0.98, metalness: 0.02 });
     const roofMat = new THREE.MeshStandardMaterial({ color: 0x3a1a10, roughness: 0.7, metalness: 0.3 });
-    const flagMat = new THREE.MeshStandardMaterial({ color: 0x8a2820, side: THREE.DoubleSide, roughness: 0.8 });
     const goldMat = new THREE.MeshStandardMaterial({ color: 0xC9A96A, roughness: 0.3, metalness: 0.9, emissive: 0x2a1f08, emissiveIntensity: 0.5 });
-    const wallDist = 24, wallHeight = 12, wallThick = 2;
-    const walls = [
-        { w: wallDist*2, d: wallThick, x: 0, z: -wallDist },
-        { w: wallDist*2, d: wallThick, x: 0, z: wallDist },
-        { w: wallThick, d: wallDist*2, x: -wallDist, z: 0 },
-        { w: wallThick, d: wallDist*2, x: wallDist, z: 0 }
-    ];
-    walls.forEach(({ w, d, x, z }) => {
+    const wallDist = 24, wallHeight = 12;
+    [[0,-wallDist,wallDist*2,2],[0,wallDist,wallDist*2,2],[-wallDist,0,2,wallDist*2],[wallDist,0,2,wallDist*2]].forEach(([x,z,w,d])=>{
         const wall = new THREE.Mesh(new THREE.BoxGeometry(w, wallHeight, d), stoneMat);
-        wall.position.set(x, wallHeight/2, z);
-        g.add(wall);
+        wall.position.set(x, wallHeight/2, z); g.add(wall);
     });
-    walls.forEach(({ w, d, x, z }) => {
-        const len = Math.max(w, d), count = Math.floor(len / 3), isX = w > d;
-        for (let i = 0; i < count; i++) {
-            const t = (i + 0.5) / count - 0.5;
-            const b = new THREE.Mesh(new THREE.BoxGeometry(isX ? 1.5 : 1.2, 2, isX ? 1.2 : 1.5), stoneMat);
-            b.position.set(x + (isX ? t * w : 0), wallHeight + 1, z + (isX ? 0 : t * d));
-            g.add(b);
-        }
-    });
-    const towerPositions = [[-wallDist, -wallDist], [wallDist, -wallDist], [-wallDist, wallDist], [wallDist, wallDist]];
     const torchTex = makeGlowSpriteTexture();
     const torchMat = new THREE.SpriteMaterial({ map: torchTex, color: 0xFFB860, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9 });
-    towerPositions.forEach(([x, z]) => {
+    [[-wallDist,-wallDist],[wallDist,-wallDist],[-wallDist,wallDist],[wallDist,wallDist]].forEach(([x, z]) => {
         const tower = new THREE.Mesh(new THREE.CylinderGeometry(4, 4.5, wallHeight + 6, 12), stoneDarkMat);
         tower.position.set(x, (wallHeight + 6)/2, z); g.add(tower);
         const top = new THREE.Mesh(new THREE.CylinderGeometry(4.3, 4.3, 0.6, 12), goldMat);
         top.position.set(x, wallHeight + 6, z); g.add(top);
         const roof = new THREE.Mesh(new THREE.ConeGeometry(4.5, 6, 12), roofMat);
         roof.position.set(x, wallHeight + 9.3, z); g.add(roof);
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 4, 6), goldMat);
-        pole.position.set(x, wallHeight + 13, z); g.add(pole);
-        const flag = new THREE.Mesh(new THREE.PlaneGeometry(2, 1.2), flagMat);
-        flag.position.set(x + 1.1, wallHeight + 14, z); g.add(flag);
         const torch = new THREE.Sprite(torchMat);
         torch.position.set(x * 0.7, wallHeight - 2, z * 0.7);
         torch.scale.set(4, 4, 1); g.add(torch);
@@ -682,7 +584,6 @@ function buildForestBg() {
         new THREE.MeshStandardMaterial({ color: 0x1a4a28, roughness: 0.9 }),
         new THREE.MeshStandardMaterial({ color: 0x0a2818, roughness: 0.9 })
     ];
-    const rockMat = new THREE.MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.95 });
     for (let i = 0; i < 18; i++) {
         const angle = (i / 18) * Math.PI * 2 + Math.random() * 0.3;
         const dist = 12 + Math.random() * 12;
@@ -698,14 +599,6 @@ function buildForestBg() {
             g.add(cone);
         }
     }
-    for (let i = 0; i < 10; i++) {
-        const angle = Math.random() * Math.PI * 2, dist = 10 + Math.random() * 12;
-        const size = 0.5 + Math.random() * 0.8;
-        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(size, 0), rockMat);
-        rock.position.set(Math.cos(angle) * dist, size * 0.5, Math.sin(angle) * dist);
-        rock.rotation.set(Math.random(), Math.random(), Math.random());
-        g.add(rock);
-    }
     const fireflyMat = new THREE.SpriteMaterial({ map: makeGlowSpriteTexture(), color: 0xAAFF66, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9 });
     for (let i = 0; i < 30; i++) {
         const ff = new THREE.Sprite(fireflyMat);
@@ -714,9 +607,6 @@ function buildForestBg() {
         const s = 0.3 + Math.random() * 0.4;
         ff.scale.set(s, s, 1); g.add(ff);
     }
-    const moonMat = new THREE.SpriteMaterial({ map: makeGlowSpriteTexture(), color: 0xE8F0FF, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.6, fog: false });
-    const moon = new THREE.Sprite(moonMat);
-    moon.position.set(-25, 30, -30); moon.scale.set(18, 18, 1); g.add(moon);
     return g;
 }
 
@@ -726,72 +616,20 @@ function buildGiantBg() {
     const skinDarkMat = new THREE.MeshStandardMaterial({ color: 0x1a1008, roughness: 0.9 });
     const eyeMat = new THREE.MeshBasicMaterial({ color: 0xFFD060 });
     const browMat = new THREE.MeshStandardMaterial({ color: 0x1a0a04, roughness: 0.9 });
-
     const head = new THREE.Mesh(new THREE.SphereGeometry(2.5, 24, 16), skinMat);
     head.position.set(0, -3.4, 0); head.scale.set(1.2, 1.0, 1.1); g.add(head);
-
     const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 12), eyeMat);
     eyeL.position.set(-0.8, -3.2, 2.2); g.add(eyeL);
     const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 12), eyeMat);
     eyeR.position.set(0.8, -3.2, 2.2); g.add(eyeR);
-
-    const eyeGlowMat = new THREE.SpriteMaterial({ map: makeGlowSpriteTexture(), color: 0xFFB040, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9, fog: false });
-    const glowL = new THREE.Sprite(eyeGlowMat); glowL.position.set(-0.8, -3.2, 2.4); glowL.scale.set(1.8, 1.8, 1); g.add(glowL);
-    const glowR = new THREE.Sprite(eyeGlowMat); glowR.position.set(0.8, -3.2, 2.4); glowR.scale.set(1.8, 1.8, 1); g.add(glowR);
-
-    const browL = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.25, 0.3), browMat);
-    browL.position.set(-0.8, -2.7, 2.2); browL.rotation.z = -0.2; g.add(browL);
-    const browR = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.25, 0.3), browMat);
-    browR.position.set(0.8, -2.7, 2.2); browR.rotation.z = 0.2; g.add(browR);
-
     const nose = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 12), skinDarkMat);
     nose.position.set(0, -3.6, 2.3); nose.scale.set(1, 1.3, 1.2); g.add(nose);
-
     const mouth = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.2, 0.3), browMat);
     mouth.position.set(0, -4.3, 2.2); g.add(mouth);
-
     const neck = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.8, 2, 16), skinMat);
     neck.position.set(0, -6.3, 0); g.add(neck);
-
-    const shoulders = new THREE.Mesh(new THREE.CapsuleGeometry(3.5, 6, 8, 20), skinMat);
-    shoulders.position.set(0, -9, 0); shoulders.rotation.z = Math.PI / 2; shoulders.scale.set(1, 1, 1.4); g.add(shoulders);
-
     const body = new THREE.Mesh(new THREE.CylinderGeometry(4, 5, 8, 16), skinMat);
     body.position.set(0, -14, 0); g.add(body);
-
-    function makeArm(start, end, radius) {
-        const dir = new THREE.Vector3().subVectors(end, start);
-        const len = dir.length();
-        const geo = new THREE.CylinderGeometry(radius * 0.8, radius, len, 12);
-        const mesh = new THREE.Mesh(geo, skinMat);
-        mesh.position.copy(start).add(end).multiplyScalar(0.5);
-        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
-        return mesh;
-    }
-    g.add(makeArm(new THREE.Vector3(-6, -9, 0), new THREE.Vector3(-4.5, -1.2, 3.5), 1.1));
-    g.add(makeArm(new THREE.Vector3(6, -9, 0), new THREE.Vector3(4.5, -1.2, 3.5), 1.1));
-
-    const handL = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 10), skinMat);
-    handL.position.set(-4.5, -1.2, 3.5); handL.scale.set(1.2, 0.6, 1.2); g.add(handL);
-    const handR = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 10), skinMat);
-    handR.position.set(4.5, -1.2, 3.5); handR.scale.set(1.2, 0.6, 1.2); g.add(handR);
-
-    const earL = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), skinMat);
-    earL.position.set(-3, -3.3, 0); earL.scale.set(0.6, 1, 0.8); g.add(earL);
-    const earR = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), skinMat);
-    earR.position.set(3, -3.3, 0); earR.scale.set(0.6, 1, 0.8); g.add(earR);
-
-    const faceLight = new THREE.PointLight(0xFFB060, 2.0, 12);
-    faceLight.position.set(0, -4, 5); g.add(faceLight);
-
-    const cloudMat = new THREE.SpriteMaterial({ map: makeGlowSpriteTexture(), color: 0x4a6a9a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.3, fog: false });
-    for (let i = 0; i < 8; i++) {
-        const cloud = new THREE.Sprite(cloudMat);
-        const angle = Math.random() * Math.PI * 2, dist = 15 + Math.random() * 20;
-        cloud.position.set(Math.cos(angle) * dist, -15 - Math.random() * 5, Math.sin(angle) * dist);
-        const s = 15 + Math.random() * 15;
-        cloud.scale.set(s, s * 0.4, 1); g.add(cloud);
-    }
     return g;
 }
 
@@ -857,23 +695,16 @@ window.setBoardBackground = function(type){
 };
 
 // =========================================================
-// نظام الصوت
+// الصوت
 // =========================================================
 function midiToFreq(midi){ return 440 * Math.pow(2, (midi - 69) / 12); }
-
-const MUSIC_CHORDS = [
-    [48, 60, 64, 67, 71],
-    [45, 57, 60, 64, 67],
-    [41, 53, 57, 60, 64],
-    [43, 55, 59, 62, 65]
-];
+const MUSIC_CHORDS = [[48,60,64,67,71],[45,57,60,64,67],[41,53,57,60,64],[43,55,59,62,65]];
 const MUSIC_PATTERN = [[0, 2], [], [1], [], [3], [], [2], []];
 
 const AudioEngine = {
     ctx: null, sfxGain: null, musicGain: null,
     musicPlaying: false, musicSchedulerId: null,
     nextNoteTime: 0, currentStep: 0, loopLength: 32, stepDuration: 0.5,
-    _interacted: false,
 
     init() {
         if (this.ctx) return;
@@ -881,46 +712,34 @@ const AudioEngine = {
         if (!AC) return;
         try {
             this.ctx = new AC();
-            if (this.ctx.state === 'suspended') {
-                this.ctx.resume().catch(()=>{});
-            }
+            if (this.ctx.state === 'suspended') this.ctx.resume().catch(()=>{});
             this.sfxGain = this.ctx.createGain();
             this.musicGain = this.ctx.createGain();
             this.sfxGain.connect(this.ctx.destination);
             this.musicGain.connect(this.ctx.destination);
-
             const delay = this.ctx.createDelay(0.5);
             delay.delayTime.value = 0.30;
             const dry = this.ctx.createGain(); dry.gain.value = 1.0;
             const wet = this.ctx.createGain(); wet.gain.value = 0.16;
             this.musicGain.connect(dry); dry.connect(this.ctx.destination);
             this.musicGain.connect(delay); delay.connect(wet); wet.connect(this.ctx.destination);
-
             this.updateVolumes();
-        } catch (e) { console.warn('Audio init failed:', e); }
+        } catch (e) {}
     },
 
     updateVolumes() {
         if (!this.ctx) return;
-        const s = (playerData && playerData.settings) || DEFAULT_SETTINGS;
-        const sv = s.sound ? (typeof s.soundVolume === 'number' ? s.soundVolume : 0.7) : 0;
-        const mv = s.music ? (typeof s.musicVolume === 'number' ? s.musicVolume : 0.3) : 0;
+        const s = playerData.settings;
+        const sv = s.sound ? s.soundVolume : 0;
+        const mv = s.music ? s.musicVolume : 0;
         try {
             this.sfxGain.gain.setTargetAtTime(sv, this.ctx.currentTime, 0.05);
             this.musicGain.gain.setTargetAtTime(mv, this.ctx.currentTime, 0.10);
-        } catch (e) {
-            this.sfxGain.gain.value = sv;
-            this.musicGain.gain.value = mv;
-        }
+        } catch (e) {}
     },
 
-    resume() {
-        if (this.ctx && this.ctx.state === 'suspended') {
-            this.ctx.resume().catch(()=>{});
-        }
-    },
-
-    canPlaySfx() { return playerData && playerData.settings && playerData.settings.sound; },
+    resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(()=>{}); },
+    canPlaySfx() { return playerData.settings.sound; },
 
     playTone(freq, opts = {}) {
         if (!this.ctx) return;
@@ -953,63 +772,45 @@ const AudioEngine = {
         src.start(startTime || this.ctx.currentTime);
     },
 
-    sfxClick() {
-        if (!this.canPlaySfx() || !this.ctx) return;
-        this.resume();
+    sfxClick() { if (!this.canPlaySfx() || !this.ctx) return; this.resume();
         const now = this.ctx.currentTime;
         this.playTone(1200, { duration: 0.05, type: 'sine', gain: 0.25, startTime: now });
         this.playTone(1700, { duration: 0.035, type: 'sine', gain: 0.12, startTime: now + 0.018 });
     },
-    sfxSelect() {
-        if (!this.canPlaySfx() || !this.ctx) return;
-        this.resume();
+    sfxSelect() { if (!this.canPlaySfx() || !this.ctx) return; this.resume();
         const now = this.ctx.currentTime;
         this.playTone(660, { duration: 0.08, type: 'sine', gain: 0.22, startTime: now });
         this.playTone(990, { duration: 0.05, type: 'sine', gain: 0.10, startTime: now + 0.035 });
     },
-    sfxMove() {
-        if (!this.canPlaySfx() || !this.ctx) return;
-        this.resume();
+    sfxMove() { if (!this.canPlaySfx() || !this.ctx) return; this.resume();
         const now = this.ctx.currentTime;
         this.playTone(230, { duration: 0.10, type: 'triangle', gain: 0.32, startTime: now });
         this.playNoise(0.035, 0.12, now);
     },
-    sfxCapture() {
-        if (!this.canPlaySfx() || !this.ctx) return;
-        this.resume();
+    sfxCapture() { if (!this.canPlaySfx() || !this.ctx) return; this.resume();
         const now = this.ctx.currentTime;
         this.playTone(180, { duration: 0.18, type: 'triangle', gain: 0.45, startTime: now });
         this.playNoise(0.08, 0.30, now);
         this.playTone(140, { duration: 0.20, type: 'sine', gain: 0.25, startTime: now + 0.02 });
     },
-    sfxCheck() {
-        if (!this.canPlaySfx() || !this.ctx) return;
-        this.resume();
+    sfxCheck() { if (!this.canPlaySfx() || !this.ctx) return; this.resume();
         const now = this.ctx.currentTime;
         this.playTone(880, { duration: 0.12, type: 'sine', gain: 0.35, startTime: now });
         this.playTone(1046.5, { duration: 0.16, type: 'sine', gain: 0.35, startTime: now + 0.13 });
     },
-    sfxCheckmate() {
-        if (!this.canPlaySfx() || !this.ctx) return;
-        this.resume();
+    sfxCheckmate() { if (!this.canPlaySfx() || !this.ctx) return; this.resume();
         const now = this.ctx.currentTime;
         [784, 659, 523, 392, 262].forEach((f, i) => this.playTone(f, { duration: 0.30, type: 'triangle', gain: 0.42, startTime: now + i * 0.16 }));
     },
-    sfxWin() {
-        if (!this.canPlaySfx() || !this.ctx) return;
-        this.resume();
+    sfxWin() { if (!this.canPlaySfx() || !this.ctx) return; this.resume();
         const now = this.ctx.currentTime;
         [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => this.playTone(f, { duration: 0.42, type: 'triangle', gain: 0.38, startTime: now + i * 0.12 }));
     },
-    sfxLose() {
-        if (!this.canPlaySfx() || !this.ctx) return;
-        this.resume();
+    sfxLose() { if (!this.canPlaySfx() || !this.ctx) return; this.resume();
         const now = this.ctx.currentTime;
         [440, 392, 349.23, 293.66].forEach((f, i) => this.playTone(f, { duration: 0.40, type: 'sine', gain: 0.32, startTime: now + i * 0.15 }));
     },
-    sfxNotify() {
-        if (!this.canPlaySfx() || !this.ctx) return;
-        this.resume();
+    sfxNotify() { if (!this.canPlaySfx() || !this.ctx) return; this.resume();
         const now = this.ctx.currentTime;
         this.playTone(880, { duration: 0.18, type: 'sine', gain: 0.28, startTime: now });
         this.playTone(1320, { duration: 0.22, type: 'sine', gain: 0.16, startTime: now + 0.08 });
@@ -1025,26 +826,19 @@ const AudioEngine = {
         this.nextNoteTime = this.ctx.currentTime + 0.1;
         this.musicSchedulerId = setInterval(() => this.musicScheduler(), 25);
     },
-
     stopMusic() {
         this.musicPlaying = false;
-        if (this.musicSchedulerId) {
-            clearInterval(this.musicSchedulerId);
-            this.musicSchedulerId = null;
-        }
+        if (this.musicSchedulerId) { clearInterval(this.musicSchedulerId); this.musicSchedulerId = null; }
     },
-
     musicScheduler() {
         if (!this.musicPlaying || !this.ctx) return;
         if (this.nextNoteTime < this.ctx.currentTime - 1) this.nextNoteTime = this.ctx.currentTime + 0.1;
-        const lookahead = 0.1;
-        while (this.nextNoteTime < this.ctx.currentTime + lookahead) {
+        while (this.nextNoteTime < this.ctx.currentTime + 0.1) {
             this.scheduleMusicStep(this.currentStep, this.nextNoteTime);
             this.nextNoteTime += this.stepDuration;
             this.currentStep = (this.currentStep + 1) % this.loopLength;
         }
     },
-
     scheduleMusicStep(step, time) {
         const chordIdx = Math.floor(step / 8);
         const stepInChord = step % 8;
@@ -1053,24 +847,17 @@ const AudioEngine = {
         if (!chord || !pattern) return;
         pattern.forEach(noteIdx => {
             if (noteIdx < chord.length) {
-                const midi = chord[noteIdx];
-                const freq = midiToFreq(midi);
+                const freq = midiToFreq(chord[noteIdx]);
                 const isBass = (noteIdx === 0);
-                const duration = isBass ? 2.6 : 1.9;
-                const velocity = isBass ? 0.42 : 0.30;
-                this.playPianoNote(freq, time, duration, velocity);
+                this.playPianoNote(freq, time, isBass ? 2.6 : 1.9, isBass ? 0.42 : 0.30);
             }
         });
     },
-
     playPianoNote(freq, when, duration, velocity) {
         const ctx = this.ctx;
-        const osc1 = ctx.createOscillator();
-        osc1.type = 'triangle'; osc1.frequency.value = freq;
-        const osc2 = ctx.createOscillator();
-        osc2.type = 'sine'; osc2.frequency.value = freq * 2;
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'lowpass'; filter.frequency.value = 2400; filter.Q.value = 0.5;
+        const osc1 = ctx.createOscillator(); osc1.type = 'triangle'; osc1.frequency.value = freq;
+        const osc2 = ctx.createOscillator(); osc2.type = 'sine'; osc2.frequency.value = freq * 2;
+        const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 2400;
         const g1 = ctx.createGain(), g2 = ctx.createGain();
         g1.gain.setValueAtTime(0, when);
         g1.gain.linearRampToValueAtTime(velocity, when + 0.008);
@@ -1093,30 +880,25 @@ function unlockAudio() {
     audioUnlocked = true;
     AudioEngine.init();
     AudioEngine.resume();
-    if (playerData.settings && playerData.settings.music) AudioEngine.startMusic();
+    if (playerData.settings.music) AudioEngine.startMusic();
 }
 ['pointerdown', 'touchstart', 'keydown'].forEach(evt =>
     document.addEventListener(evt, unlockAudio, { once: true, passive: true })
 );
-// استئناف عند العودة من الخلفية (WebView)
 document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && AudioEngine.ctx && AudioEngine.ctx.state === 'suspended') {
-        AudioEngine.ctx.resume().catch(()=>{});
-    }
+    if (!document.hidden && AudioEngine.ctx && AudioEngine.ctx.state === 'suspended') AudioEngine.ctx.resume().catch(()=>{});
 });
 
 function syncSettingsUI() {
-    const s = playerData.settings || DEFAULT_SETTINGS;
+    const s = playerData.settings;
     const soundEl = document.getElementById('soundSetting');
     const musicEl = document.getElementById('musicSetting');
     const soundVolEl = document.getElementById('soundVolume');
     const musicVolEl = document.getElementById('musicVolume');
-    const hapticEl = document.getElementById('hapticSetting');
     if (soundEl) soundEl.checked = !!s.sound;
     if (musicEl) musicEl.checked = !!s.music;
     if (soundVolEl) soundVolEl.value = Math.round((s.soundVolume ?? 0.7) * 100);
     if (musicVolEl) musicVolEl.value = Math.round((s.musicVolume ?? 0.3) * 100);
-    if (hapticEl) hapticEl.checked = !!s.haptic;
 }
 
 function attachSettingsListeners() {
@@ -1124,7 +906,6 @@ function attachSettingsListeners() {
     const musicEl = document.getElementById('musicSetting');
     const soundVolEl = document.getElementById('soundVolume');
     const musicVolEl = document.getElementById('musicVolume');
-    const hapticEl = document.getElementById('hapticSetting');
 
     if (soundEl) soundEl.addEventListener('change', e => {
         playerData.settings.sound = e.target.checked;
@@ -1146,10 +927,6 @@ function attachSettingsListeners() {
     if (musicVolEl) musicVolEl.addEventListener('input', e => {
         playerData.settings.musicVolume = e.target.value / 100;
         AudioEngine.updateVolumes(); savePlayerData();
-    });
-    if (hapticEl) hapticEl.addEventListener('change', e => {
-        playerData.settings.haptic = e.target.checked;
-        savePlayerData();
     });
 }
 
@@ -1174,53 +951,175 @@ const files = "abcdefgh";
 
 function position(sq){ return { x: files.indexOf(sq[0]) - 3.5, z: Number(sq[1]) - 4.5 }; }
 
+// =========================================================
+// ربط نظام المكافآت
+// =========================================================
+window.addEventListener('rewards:balanceChanged', (e) => {
+    const b = e.detail;
+    const setText = (id, v) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = (v || 0).toLocaleString();
+    };
+    setText('ui-coins', b.coins);
+    setText('ui-gems', b.gems);
+    setText('ui-trophies', b.trophies);
+    setText('ui-level', b.level);
+});
+
+window.addEventListener('rewards:currencyAdded', (e) => {
+    const d = e.detail;
+    if (d.amount <= 0) return;
+    const icons = { coins: '🪙', gems: '💎', trophies: '⭐' };
+    showToast(`🎉 +${d.amount} ${icons[d.type] || ''} — ${d.reason}`);
+});
+
+window.renderDailyRewardsUI = function(){
+    const grid = document.getElementById('rewardGrid');
+    if (!grid) return;
+    const status = RewardsSystem.getDailyStatus();
+    grid.innerHTML = '';
+    status.rewards.forEach((rw, i) => {
+        const cls = rw.claimed ? 'claimed' : (rw.isCurrent ? 'current' : '');
+        const btn = rw.claimed
+            ? `<button class="claim-btn" disabled>تم ✓</button>`
+            : rw.isCurrent
+                ? `<button class="claim-btn" data-claim="${i}">استلام</button>`
+                : `<button class="claim-btn" disabled>مغلق</button>`;
+        grid.innerHTML += `<div class="reward-day ${cls}"><div class="day-num">اليوم ${rw.day}</div><span class="day-icon">${rw.icon}</span><div class="day-val">${rw.amount}</div>${btn}</div>`;
+    });
+    grid.querySelectorAll('[data-claim]').forEach(b => {
+        b.addEventListener('click', () => {
+            const i = parseInt(b.dataset.claim, 10);
+            const res = RewardsSystem.claimDaily(i);
+            if (res.ok) renderDailyRewardsUI();
+            else showToast('❌ ' + res.error);
+        });
+    });
+    const badge = document.getElementById('daily-badge');
+    if (badge) badge.style.display = status.canClaim ? 'flex' : 'none';
+};
+
+window.renderAchievementsUI = function(){
+    const list = document.getElementById('achievementsList');
+    if (!list) return;
+    list.innerHTML = '';
+    RewardsSystem.getAchievements().forEach(a => {
+        const btn = a.completed
+            ? (a.claimed
+                ? `<button class="claim-btn" disabled>تم الاستلام</button>`
+                : `<button class="claim-btn" data-ach="${a.key}">استلام 🪙${a.reward}</button>`)
+            : '';
+        list.innerHTML += `<div class="achieve-row">
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+                <b>${a.name}</b>
+                <span class="prog">${a.progress}/${a.target}</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:${a.percent}%"></div></div>
+            ${btn ? `<div style="margin-top:5px;text-align:center;">${btn}</div>` : ''}
+        </div>`;
+    });
+    list.querySelectorAll('[data-ach]').forEach(b => {
+        b.addEventListener('click', () => {
+            const res = RewardsSystem.claimAchievement(b.dataset.ach);
+            if (res.ok) renderAchievementsUI();
+            else showToast('❌ ' + res.error);
+        });
+    });
+};
+
+window.renderMissionsUI = function(){
+    const list = document.getElementById('missionsList');
+    if (!list) return;
+    list.innerHTML = '';
+    RewardsSystem.getMissions().forEach(m => {
+        const btn = m.completed
+            ? (m.claimed
+                ? `<button class="claim-btn" disabled>تم الاستلام</button>`
+                : `<button class="claim-btn" data-mis="${m.key}">استلام 🪙${m.reward}</button>`)
+            : '';
+        list.innerHTML += `<div class="mission-row">
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+                <b>${m.name}</b>
+                <span class="reward">${m.progress}/${m.target}</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:${m.percent}%"></div></div>
+            ${btn ? `<div style="margin-top:5px;text-align:center;">${btn}</div>` : ''}
+        </div>`;
+    });
+    list.querySelectorAll('[data-mis]').forEach(b => {
+        b.addEventListener('click', () => {
+            const res = RewardsSystem.claimMission(b.dataset.mis);
+            if (res.ok) renderMissionsUI();
+            else showToast('❌ ' + res.error);
+        });
+    });
+};
+
+window.renderChestUI = function(){
+    const timerEl = document.getElementById('chest-timer');
+    const btn = document.getElementById('openChestBtn');
+    if (!timerEl || !btn) return;
+    const status = RewardsSystem.getChestStatus('hero');
+    if (!status) return;
+    if (status.ready) {
+        timerEl.textContent = 'جاهز!';
+        btn.disabled = false;
+        btn.textContent = `افتح الصندوق (🪙 ${status.cost.coins || 0})`;
+        btn.style.opacity = '1';
+    } else {
+        const sec = Math.floor(status.remainingMs / 1000);
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        timerEl.textContent = `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        btn.disabled = true;
+        btn.textContent = 'الرجاء الانتظار...';
+        btn.style.opacity = '.5';
+    }
+};
+
+window.openChestAction = function(){
+    const res = RewardsSystem.openChest('hero');
+    if (!res.ok) {
+        showToast('❌ ' + (res.error || 'فشل'));
+        return;
+    }
+    const chestEl = document.getElementById('chestVisual');
+    if (chestEl) chestEl.classList.add('opened');
+    setTimeout(() => {
+        const icons = { coins: '🪙', gems: '💎', trophies: '⭐' };
+        showToast(`🎉 ${res.reward.amount} ${icons[res.reward.type]}`);
+        if (chestEl) chestEl.classList.remove('opened');
+        renderChestUI();
+    }, 600);
+};
+
+// =========================================================
+// دوال مساعدة
+// =========================================================
 function loadPlayerData(){
     const saved = window.SafeStorage.getItem('monsterChessData');
     if(saved){
         try{
             const parsed = JSON.parse(saved);
-            playerData = { ...playerData, ...parsed };
-            if(!parsed.achievements) playerData.achievements = { win1:{progress:0,target:1,reward:500,claimed:false},win5:{progress:0,target:5,reward:2000,claimed:false},capture10:{progress:0,target:10,reward:1000,claimed:false} };
-            if(!parsed.missions) playerData.missions = { play1:{progress:0,target:1,reward:100,claimed:false},win1:{progress:0,target:1,reward:250,claimed:false},capture3:{progress:0,target:3,reward:150,claimed:false} };
-            if(!parsed.customization) playerData.customization = { ...DEFAULT_CUSTOM };
-            if(!parsed.settings) playerData.settings = { ...DEFAULT_SETTINGS };
-            else playerData.settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
+            if(parsed.customization) playerData.customization = { ...DEFAULT_CUSTOM, ...parsed.customization };
+            if(parsed.settings) playerData.settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
         }catch(e){ console.error("Load error", e); }
     }
     currentCustom = { ...DEFAULT_CUSTOM, ...playerData.customization };
     if(!currentCustom.boardBg || !BOARD_BACKGROUNDS[currentCustom.boardBg]) currentCustom.boardBg = 'castle';
-    updateUI();
-    renderDailyRewards();
-    renderAchievements();
-    renderMissions();
-    updateChestTimer();
     renderPresets();
     renderColorPickers();
     renderCameraButtons();
     renderBackgroundButtons();
     syncSettingsUI();
-    applyCustomization(currentCustom, false);
+    if(gameInitialized) applyCustomization(currentCustom, false);
     AudioEngine.updateVolumes();
 }
 
 function savePlayerData(){
     playerData.customization = { ...currentCustom };
     window.SafeStorage.setItem('monsterChessData', JSON.stringify(playerData));
-}
-
-function updateUI(){
-    document.getElementById('ui-coins').textContent = playerData.coins.toLocaleString();
-    document.getElementById('ui-gems').textContent = playerData.gems.toLocaleString();
-    document.getElementById('ui-trophies').textContent = playerData.trophies.toLocaleString();
-    document.getElementById('ui-level').textContent = playerData.level;
-}
-
-function addReward(type, amount, reason){
-    if(type==='coin') playerData.coins += amount;
-    if(type==='gem') playerData.gems += amount;
-    if(type==='trophy') playerData.trophies += amount;
-    updateUI(); savePlayerData();
-    showToast(`🎉 حصلت على ${amount} ${type==='coin'?'🪙':type==='gem'?'💎':'⭐'} (${reason})`);
 }
 
 function showToast(msg, duration=2400){
@@ -1235,10 +1134,10 @@ window.showToast = showToast;
 window.openModal = function(id){
     const m = document.getElementById('modal-' + id);
     if(m) m.classList.add('active');
-    if(id==='daily-rewards') renderDailyRewards();
-    if(id==='achievements') renderAchievements();
-    if(id==='missions') renderMissions();
-    if(id==='chest') updateChestTimer();
+    if(id==='daily-rewards') renderDailyRewardsUI();
+    if(id==='achievements') renderAchievementsUI();
+    if(id==='missions') renderMissionsUI();
+    if(id==='chest') renderChestUI();
     if(id==='customization'){ renderPresets(); renderColorPickers(); renderCameraButtons(); renderBackgroundButtons(); }
     if(id==='settings'){ syncSettingsUI(); }
     AudioEngine.sfxClick();
@@ -1251,146 +1150,19 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
     o.addEventListener('click', e => { if(e.target === o) o.classList.remove('active'); });
 });
 
-const DAILY_REWARDS = [
-    {day:1,icon:'🪙',amount:500,type:'coin'},{day:2,icon:'🪙',amount:1000,type:'coin'},
-    {day:3,icon:'💎',amount:10,type:'gem'},{day:4,icon:'🪙',amount:2000,type:'coin'},
-    {day:5,icon:'💎',amount:25,type:'gem'},{day:6,icon:'🪙',amount:5000,type:'coin'},
-    {day:7,icon:'💎',amount:100,type:'gem'}
-];
-function renderDailyRewards(){
-    const grid = document.getElementById('rewardGrid');
-    if(!grid) return;
-    grid.innerHTML = '';
-    const today = new Date().toDateString();
-    let canClaim = playerData.lastDailyClaim !== today;
-    if (playerData.dailyStreak >= DAILY_REWARDS.length && canClaim) {
-        playerData.dailyStreak = 0; savePlayerData();
-    }
-    DAILY_REWARDS.forEach((rw, i) => {
-        const claimed = i < playerData.dailyStreak;
-        const current = i === playerData.dailyStreak && canClaim;
-        let cls = claimed ? 'claimed' : (current ? 'current' : '');
-        let btn = claimed ? `<button class="claim-btn" disabled>تم ✓</button>` :
-                  current ? `<button class="claim-btn" onclick="claimDaily(${i})">استلام</button>` :
-                  `<button class="claim-btn" disabled>مغلق</button>`;
-        grid.innerHTML += `<div class="reward-day ${cls}"><div class="day-num">اليوم ${rw.day}</div><span class="day-icon">${rw.icon}</span><div class="day-val">${rw.amount}</div>${btn}</div>`;
-    });
-    const badge = document.getElementById('daily-badge');
-    if(badge) badge.style.display = canClaim ? 'flex' : 'none';
-}
-window.claimDaily = function(i){
-    const rw = DAILY_REWARDS[i]; if(!rw) return;
-    playerData.dailyStreak++; playerData.lastDailyClaim = new Date().toDateString();
-    addReward(rw.type, rw.amount, `مكافأة اليوم ${rw.day}`);
-    renderDailyRewards();
-};
-
-function updateChestTimer(){
-    const now = Date.now();
-    const btn = document.getElementById('openChestBtn');
-    const timerEl = document.getElementById('chest-timer');
-    if(!btn || !timerEl) return;
-    if(now < playerData.chestReadyAt){
-        const diff = playerData.chestReadyAt - now;
-        const h = Math.floor(diff / 3600000);
-        const m = Math.floor((diff % 3600000) / 60000);
-        const s = Math.floor((diff % 60000) / 1000);
-        timerEl.textContent = `${h}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-        btn.disabled = true; btn.textContent = 'الرجاء الانتظار...'; btn.style.opacity = '.5';
-    } else {
-        timerEl.textContent = 'جاهز!';
-        btn.disabled = false; btn.textContent = 'افتح الصندوق (🪙 500)'; btn.style.opacity = '1';
-    }
-}
-window.openChest = function(){
-    if(playerData.coins < 500){ showToast('❌ لا تملك عملات كافية!'); return; }
-    playerData.coins -= 500; updateUI(); savePlayerData();
-    const chestEl = document.getElementById('chestVisual');
-    chestEl.classList.add('opened');
-    document.getElementById('openChestBtn').disabled = true;
-    setTimeout(() => {
-        const r = Math.random();
-        let type, amount;
-        if(r < .6){ type='coin'; amount=Math.floor(Math.random()*1000)+500; }
-        else if(r < .9){ type='gem'; amount=Math.floor(Math.random()*20)+5; }
-        else { type='trophy'; amount=Math.floor(Math.random()*100)+50; }
-        addReward(type, amount, 'صندوق الأبطال');
-        playerData.chestReadyAt = Date.now() + 3600000;
-        savePlayerData();
-        chestEl.classList.remove('opened');
-        updateChestTimer();
-        closeModal('chest');
-    }, 600);
-};
-
-const ACH_NAMES = { win1:'🐲 قاهر التنين', win5:'👑 ملك الرقعة', capture10:'⚔️ سفاح' };
-function renderAchievements(){
-    const list = document.getElementById('achievementsList');
-    if(!list) return;
-    list.innerHTML = '';
-    for(const k in playerData.achievements){
-        const a = playerData.achievements[k];
-        const pct = Math.min(100, (a.progress/a.target)*100);
-        let btn = '';
-        if(a.progress >= a.target){
-            btn = a.claimed ? `<button class="claim-btn" disabled>تم الاستلام</button>` : `<button class="claim-btn" onclick="claimAch('${k}')">استلام 🪙${a.reward}</button>`;
-        }
-        list.innerHTML += `<div class="achieve-row"><div style="display:flex;justify-content:space-between;margin-bottom:5px;"><b>${ACH_NAMES[k]||k}</b><span class="prog">${a.progress}/${a.target}</span></div><div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div><div style="margin-top:5px;text-align:center;">${btn}</div></div>`;
-    }
-}
-window.claimAch = function(k){
-    const a = playerData.achievements[k];
-    if(a && a.progress>=a.target && !a.claimed){ a.claimed = true; addReward('coin', a.reward, 'إنجاز'); savePlayerData(); renderAchievements(); }
-};
-
-const MIS_NAMES = { play1:'🎮 العب مباراة', win1:'🏆 اربح مباراة', capture3:'⚔️ أسر 3 قطع' };
-function renderMissions(){
-    const list = document.getElementById('missionsList');
-    if(!list) return;
-    list.innerHTML = '';
-    for(const k in playerData.missions){
-        const m = playerData.missions[k];
-        const pct = Math.min(100, (m.progress/m.target)*100);
-        let btn = '';
-        if(m.progress >= m.target){
-            btn = m.claimed ? `<button class="claim-btn" disabled>تم الاستلام</button>` : `<button class="claim-btn" onclick="claimMis('${k}')">استلام 🪙${m.reward}</button>`;
-        }
-        list.innerHTML += `<div class="mission-row"><div style="display:flex;justify-content:space-between;margin-bottom:5px;"><b>${MIS_NAMES[k]||k}</b><span class="reward">${m.progress}/${m.target}</span></div><div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div><div style="margin-top:5px;text-align:center;">${btn}</div></div>`;
-    }
-}
-window.claimMis = function(k){
-    const m = playerData.missions[k];
-    if(m && m.progress>=m.target && !m.claimed){ m.claimed = true; addReward('coin', m.reward, 'مهمة'); savePlayerData(); renderMissions(); }
-};
-function updateMissionProgress(k, amt=1){
-    if(playerData.missions[k]){
-        const m = playerData.missions[k];
-        if(m.progress < m.target && !m.claimed){ m.progress = Math.min(m.target, m.progress+amt); savePlayerData(); renderMissions(); }
-    }
-}
-function updateAchievementProgress(k, amt=1){
-    if(playerData.achievements[k]){
-        const a = playerData.achievements[k];
-        if(a.progress < a.target && !a.claimed){ a.progress = Math.min(a.target, a.progress+amt); savePlayerData(); renderAchievements(); }
-    }
-}
-
 // =========================================================
-// 3D Game Setup
+// 3D Setup
 // =========================================================
 function initGame3D(){
     if(gameInitialized) return;
     gameInitialized = true;
     holder = document.getElementById("game");
     squares = [];
-
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0B1A2E);
     scene.fog = new THREE.Fog(0x0B1A2E, 20, 44);
-
     camera = new THREE.PerspectiveCamera(45, 1, .1, 100);
     camera.position.set(8, 10, 12);
-
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.shadowMap.enabled = true;
@@ -1455,45 +1227,16 @@ function initGame3D(){
     sceneMaterials.knob = new THREE.MeshStandardMaterial({ color: 0xC9A96A, roughness: .3, metalness: .8 });
 
     const railH = .22, railThick = .32, halfBoard = 4;
-    const rails = [
+    [
         [new THREE.BoxGeometry(8+railThick*2, railH, railThick), 0, halfBoard+railThick/2],
         [new THREE.BoxGeometry(8+railThick*2, railH, railThick), 0, -halfBoard-railThick/2],
         [new THREE.BoxGeometry(railThick, railH, 8), -halfBoard-railThick/2, 0],
         [new THREE.BoxGeometry(railThick, railH, 8), halfBoard+railThick/2, 0]
-    ];
-    rails.forEach(([geo, x, z]) => {
+    ].forEach(([geo, x, z]) => {
         const m = new THREE.Mesh(geo, sceneMaterials.rail);
         m.position.set(x, railH/2 + .06, z);
         m.castShadow = true; m.receiveShadow = true;
         scene.add(m);
-    });
-
-    const caps = [
-        [8+railThick*2, railThick, 0, halfBoard+railThick/2],
-        [8+railThick*2, railThick, 0, -halfBoard-railThick/2],
-        [railThick, 8, -halfBoard-railThick/2, 0],
-        [railThick, 8, halfBoard+railThick/2, 0]
-    ];
-    caps.forEach(([w, d, x, z]) => {
-        const cap = new THREE.Mesh(new THREE.BoxGeometry(w, .035, d), sceneMaterials.railTop);
-        cap.position.set(x, railH + .06, z);
-        cap.castShadow = true; cap.receiveShadow = true;
-        scene.add(cap);
-    });
-
-    const corners = [
-        [halfBoard+railThick/2, halfBoard+railThick/2],
-        [-halfBoard-railThick/2, halfBoard+railThick/2],
-        [halfBoard+railThick/2, -halfBoard-railThick/2],
-        [-halfBoard-railThick/2, -halfBoard-railThick/2]
-    ];
-    corners.forEach(([x, z]) => {
-        const post = new THREE.Mesh(new THREE.CylinderGeometry(.18,.21,.32,16), sceneMaterials.post);
-        post.position.set(x, .16+.06, z); post.castShadow = true; post.receiveShadow = true;
-        scene.add(post);
-        const knob = new THREE.Mesh(new THREE.SphereGeometry(.13,14,12), sceneMaterials.knob);
-        knob.position.set(x, .38+.06, z); knob.castShadow = true;
-        scene.add(knob);
     });
 
     board = new THREE.Group();
@@ -1554,24 +1297,16 @@ function chessPiece(type, color){
         const b=new THREE.Mesh(new THREE.CylinderGeometry(.17,.26,.5,20),mat); b.position.y=.41; b.castShadow=true; g.add(b);
         const n=new THREE.Mesh(new THREE.CylinderGeometry(.13,.18,.38,16),mat); n.position.set(.06,.76,0); n.rotation.z=-.4; n.castShadow=true; g.add(n);
         const h=new THREE.Mesh(new THREE.BoxGeometry(.18,.26,.3),mat); h.position.set(.16,.96,.02); h.rotation.z=-.4; h.castShadow=true; g.add(h);
-        const s=new THREE.Mesh(new THREE.BoxGeometry(.12,.16,.18),mat); s.position.set(.26,.94,.14); s.rotation.z=-.4; s.castShadow=true; g.add(s);
-        const m=new THREE.Mesh(new THREE.BoxGeometry(.06,.2,.1),darkMat); m.position.set(.03,1,-.06); m.rotation.z=-.4; m.castShadow=true; g.add(m);
-        const e=new THREE.Mesh(new THREE.ConeGeometry(.05,.12,6),mat); e.position.set(.1,1.12,-.02); e.castShadow=true; g.add(e);
     } else if(type==='b'){
         const b=new THREE.Mesh(new THREE.CylinderGeometry(.13,.24,.5,20),mat); b.position.y=.41; b.castShadow=true; g.add(b);
         const c=new THREE.Mesh(new THREE.TorusGeometry(.15,.035,8,20),accentMat); c.position.y=.68; c.rotation.x=Math.PI/2; c.castShadow=true; g.add(c);
         const h=new THREE.Mesh(new THREE.SphereGeometry(.17,20,16),mat); h.position.y=.88; h.scale.set(1,1.3,1); h.castShadow=true; g.add(h);
-        const tp=new THREE.Mesh(new THREE.SphereGeometry(.05,12,10),mat); tp.position.y=1.15; tp.castShadow=true; g.add(tp);
     } else if(type==='q'){
         const b=new THREE.Mesh(new THREE.CylinderGeometry(.15,.28,.6,20),mat); b.position.y=.46; b.castShadow=true; g.add(b);
         const c=new THREE.Mesh(new THREE.TorusGeometry(.18,.04,8,20),accentMat); c.position.y=.78; c.rotation.x=Math.PI/2; c.castShadow=true; g.add(c);
-        const cb=new THREE.Mesh(new THREE.CylinderGeometry(.22,.18,.16,20),mat); cb.position.y=.92; cb.castShadow=true; g.add(cb);
-        for(let i=0;i<8;i++){ const a=i*Math.PI/4; const p=new THREE.Mesh(new THREE.ConeGeometry(.04,.12,6),accentMat); p.position.set(Math.cos(a)*.16,1.06,Math.sin(a)*.16); p.castShadow=true; g.add(p); }
         const tp=new THREE.Mesh(new THREE.SphereGeometry(.07,16,12),accentMat); tp.position.y=1.16; tp.castShadow=true; g.add(tp);
     } else if(type==='k'){
         const b=new THREE.Mesh(new THREE.CylinderGeometry(.15,.28,.65,20),mat); b.position.y=.48; b.castShadow=true; g.add(b);
-        const c=new THREE.Mesh(new THREE.TorusGeometry(.18,.04,8,20),accentMat); c.position.y=.82; c.rotation.x=Math.PI/2; c.castShadow=true; g.add(c);
-        const cb=new THREE.Mesh(new THREE.CylinderGeometry(.22,.18,.14,20),mat); cb.position.y=.94; cb.castShadow=true; g.add(cb);
         const cv=new THREE.Mesh(new THREE.BoxGeometry(.07,.26,.07),accentMat); cv.position.y=1.16; cv.castShadow=true; g.add(cv);
         const ch=new THREE.Mesh(new THREE.BoxGeometry(.22,.07,.07),accentMat); ch.position.y=1.18; ch.castShadow=true; g.add(ch);
     }
@@ -1636,8 +1371,7 @@ const PRESETS = [
     { id:'emeraldGold',     name:'زمردي + ذهبي',        cfg:{ lightSquare:'#E8F0E0', darkSquare:'#0E3B26', frame:'#0A2418', accent:'#D4AF37', base:'#061510', lightColor:'#D0FFE0' } },
     { id:'royalBlueSilver', name:'أزرق ملكي + فضي',     cfg:{ lightSquare:'#E8EEF5', darkSquare:'#0E1E4A', frame:'#0A1430', accent:'#C4C9D1', base:'#060A18', lightColor:'#D0E0FF' } },
     { id:'woodCream',       name:'خشبي + كريمي',        cfg:{ lightSquare:'#F0E4CC', darkSquare:'#4A2E1A', frame:'#2E1A0E', accent:'#B8853E', base:'#1A0E06', lightColor:'#FFE4C0' } },
-    { id:'grayMarbleSilver',name:'رخام رمادي + فضي',    cfg:{ lightSquare:'#E5E7EA', darkSquare:'#5A5F66', frame:'#2E3136', accent:'#C4C9D1', base:'#1A1C20', lightColor:'#E8F0FF' } },
-    { id:'burgundyChampagne',name:'نبيذي + شامباني',    cfg:{ lightSquare:'#F2E4D8', darkSquare:'#4A0E1A', frame:'#2A050E', accent:'#C9A96A', base:'#15020A', lightColor:'#FFD8C0' } }
+    { id:'grayMarbleSilver',name:'رخام رمادي + فضي',    cfg:{ lightSquare:'#E5E7EA', darkSquare:'#5A5F66', frame:'#2E3136', accent:'#C4C9D1', base:'#1A1C20', lightColor:'#E8F0FF' } }
 ];
 
 const COLOR_LABELS = {
@@ -1798,8 +1532,10 @@ function makeMove(from, to, promotion="q"){
         if(!move) return false;
         if(move.captured && chess.turn()==='b'){
             playerCaptures++;
-            updateMissionProgress('capture3', 1);
-            updateAchievementProgress('capture10', 1);
+            if(window.RewardsSystem){
+                RewardsSystem.updateMission('capture3', 1);
+                RewardsSystem.updateAchievement('capture10', 1);
+            }
         }
         draw(); resetColors(); selected = null;
         document.getElementById("moves").textContent = chess.history().join("  ");
@@ -1864,7 +1600,6 @@ function computer(){
         const pool = Math.random()<.5 && caps.length ? caps : moves;
         chosen = pool[Math.floor(Math.random()*pool.length)];
     } else {
-        // depth مخفض للأجهزة الضعيفة
         const isLowEnd = (navigator.hardwareConcurrency || 4) <= 4;
         const depth = level==='medium' ? 1 : (isLowEnd ? 1 : 2);
         let best = Infinity;
@@ -1968,7 +1703,7 @@ window.startGame = function(level){
     if(level) document.getElementById('level').value = level;
     if(!gameInitialized) initGame3D();
     window.newGame();
-    updateMissionProgress('play1', 1);
+    if(window.RewardsSystem) RewardsSystem.updateMission('play1', 1);
     setTimeout(onResize, 50);
     setTimeout(onResize, 300);
 };
@@ -2078,11 +1813,13 @@ updateStatus = function(){
                 if(chess.fen() !== expectedFen) return;
                 if(chess.turn() === 'b'){
                     AudioEngine.sfxWin();
-                    updateMissionProgress('win1', 1);
-                    updateAchievementProgress('win1', 1);
-                    updateAchievementProgress('win5', 1);
-                    addReward('coin', 500, 'مكافأة الفوز');
-                    addReward('trophy', 30, 'نقاط ترتيب');
+                    if(window.RewardsSystem){
+                        RewardsSystem.updateMission('win1', 1);
+                        RewardsSystem.updateAchievement('win1', 1);
+                        RewardsSystem.updateAchievement('win5', 1);
+                        RewardsSystem.addCoins(500, 'مكافأة الفوز');
+                        RewardsSystem.addTrophies(30, 'نقاط ترتيب');
+                    }
                 } else {
                     AudioEngine.sfxLose();
                 }
@@ -2098,14 +1835,19 @@ window.addEventListener("orientationchange", () => setTimeout(onResize, 180));
 attachSettingsListeners();
 loadPlayerData();
 
-setInterval(updateChestTimer, 1000);
+renderDailyRewardsUI();
+renderAchievementsUI();
+renderMissionsUI();
+renderChestUI();
+setInterval(renderChestUI, 1000);
+
 setTimeout(() => {
     const s = document.getElementById("splash");
     if(s){ s.classList.add("hide"); setTimeout(() => s.remove(), 1000); }
 }, 3600);
 
 // =========================================================
-// الخلفية 3D (القلعة/السماء)
+// الخلفية 3D
 // =========================================================
 const CFG = {
   camPos      : new THREE.Vector3(0, 5.0, 18),
@@ -2120,13 +1862,8 @@ const CFG = {
 
 const COL = {
   gold        : 0xc9a96a,
-  goldBright  : 0xf3dda6,
-  goldDeep    : 0x8a6c34,
-  charcoal    : 0x0a0b0f,
   stone       : 0x0d1520,
-  stoneDark   : 0x060a11,
-  silver      : 0xc4c9d1,
-  teal        : 0x2ea89b
+  stoneDark   : 0x060a11
 };
 
 const bgContainer = document.getElementById('bg3d');
@@ -2141,13 +1878,11 @@ try {
     bgRenderer.setClearColor(CFG.fogColor, 1);
     bgContainer.appendChild(bgRenderer.domElement);
 } catch(e){
-    console.warn('[Background3D] WebGL init failed', e);
     bgContainer.style.background = 'linear-gradient(180deg,#08141f,#02040a)';
 }
 
 const bgScene = new THREE.Scene();
 bgScene.fog = new THREE.FogExp2(CFG.fogColor, CFG.fogDensity);
-
 const bgCamera = new THREE.PerspectiveCamera(CFG.fov, window.innerWidth / window.innerHeight, 0.1, 900);
 bgCamera.position.copy(CFG.camPos);
 bgCamera.lookAt(CFG.camLook);
@@ -2165,14 +1900,9 @@ if (bgRenderer && EffectComposer && RenderPass && OutputPass) {
         if (UnrealBloomPass && !isLowEnd) {
             bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.62, 0.78, 0.60);
             composer.addPass(bloomPass);
-        } else {
-            console.log('[APK] تم تعطيل Bloom لأداء أفضل');
         }
         composer.addPass(new OutputPass());
-    } catch(e) {
-        console.warn('[Composer] فشل التهيئة:', e);
-        composer = null;
-    }
+    } catch(e) { composer = null; }
 }
 
 function makeGlowTexture(size = 256, inner = 'rgba(255,240,205,1)', outer = 'rgba(255,200,120,0)'){
@@ -2190,513 +1920,104 @@ function makeGlowTexture(size = 256, inner = 'rgba(255,240,205,1)', outer = 'rgb
     return t;
 }
 
-function makeMarbleTexture(base, vein, size = 512){
-    const c = document.createElement('canvas');
-    c.width = c.height = size;
-    const ctx = c.getContext('2d');
-    ctx.fillStyle = base;
-    ctx.fillRect(0, 0, size, size);
-    for (let i = 0; i < 30; i++){
-        ctx.beginPath();
-        let x = Math.random() * size, y = -30;
-        ctx.moveTo(x, y);
-        while (y < size + 30){
-            x += (Math.random() - 0.5) * 70;
-            y += 10 + Math.random() * 26;
-            ctx.lineTo(x, y);
-        }
-        ctx.strokeStyle = vein;
-        ctx.globalAlpha = 0.03 + Math.random() * 0.14;
-        ctx.lineWidth = 0.4 + Math.random() * 2.6;
-        ctx.stroke();
-    }
-    for (let i = 0; i < 14; i++){
-        const r = 40 + Math.random() * 140;
-        const gx = Math.random() * size, gy = Math.random() * size;
-        const rg = ctx.createRadialGradient(gx, gy, 0, gx, gy, r);
-        rg.addColorStop(0, vein);
-        rg.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.globalAlpha = 0.05 + Math.random() * 0.06;
-        ctx.fillStyle = rg;
-        ctx.fillRect(gx - r, gy - r, r * 2, r * 2);
-    }
-    ctx.globalAlpha = 1;
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.anisotropy = bgRenderer ? bgRenderer.capabilities.getMaxAnisotropy() : 1;
-    return t;
-}
-
-function makeEnvTexture(){
-    const w = 1024, h = 512;
-    const c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    const ctx = c.getContext('2d');
-    const g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0.00, '#0a2838');
-    g.addColorStop(0.32, '#071725');
-    g.addColorStop(0.55, '#050c16');
-    g.addColorStop(0.72, '#101418');
-    g.addColorStop(1.00, '#04050a');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-    const ag = ctx.createRadialGradient(w * 0.5, h * 0.12, 0, w * 0.5, h * 0.12, w * 0.45);
-    ag.addColorStop(0, 'rgba(46,168,155,0.30)');
-    ag.addColorStop(1, 'rgba(46,168,155,0)');
-    ctx.fillStyle = ag;
-    ctx.fillRect(0, 0, w, h);
-    const rg = ctx.createRadialGradient(w * 0.5, h * 0.86, 0, w * 0.5, h * 0.86, w * 0.42);
-    rg.addColorStop(0, 'rgba(201,169,106,0.55)');
-    rg.addColorStop(1, 'rgba(201,169,106,0)');
-    ctx.fillStyle = rg;
-    ctx.fillRect(0, 0, w, h);
-    const t = new THREE.CanvasTexture(c);
-    t.mapping = THREE.EquirectangularReflectionMapping;
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-}
-
-bgScene.environment = makeEnvTexture();
-
 const skyUniforms = { uTime: { value: 0 } };
 const skyMat = new THREE.ShaderMaterial({
-  uniforms: skyUniforms,
-  side: THREE.BackSide,
-  depthWrite: false,
-  fog: false,
-  vertexShader: `
-    varying vec3 vWorldPos;
+  uniforms: skyUniforms, side: THREE.BackSide, depthWrite: false, fog: false,
+  vertexShader: `varying vec3 vWorldPos; void main(){ vec4 wp = modelMatrix * vec4(position, 1.0); vWorldPos = wp.xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `uniform float uTime; varying vec3 vWorldPos;
     void main(){
-      vec4 wp = modelMatrix * vec4(position, 1.0);
-      vWorldPos = wp.xyz;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: `
-    uniform float uTime;
-    varying vec3 vWorldPos;
-    float hash21(vec2 p){
-      p = fract(p * vec2(123.34, 456.21));
-      p += dot(p, p + 45.32);
-      return fract(p.x * p.y);
-    }
-    float vnoise(vec2 p){
-      vec2 i = floor(p), f = fract(p);
-      f = f * f * (3.0 - 2.0 * f);
-      float a = hash21(i);
-      float b = hash21(i + vec2(1.0, 0.0));
-      float c = hash21(i + vec2(0.0, 1.0));
-      float d = hash21(i + vec2(1.0, 1.0));
-      return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-    }
-    void main(){
-      vec3 dir = normalize(vWorldPos);
-      float h = clamp(dir.y * 1.15 + 0.07, 0.0, 1.0);
-      vec3 cHorizon = vec3(0.030, 0.078, 0.104);
-      vec3 cMid     = vec3(0.010, 0.028, 0.062);
-      vec3 cZenith  = vec3(0.0028, 0.0070, 0.0200);
-      vec3 col = mix(cHorizon, cMid,    smoothstep(0.00, 0.34, h));
-      col      = mix(col,      cZenith, smoothstep(0.34, 1.00, h));
-      float ux = atan(dir.z, dir.x) / 3.14159265;
-      float t  = uTime * 0.055;
-      float band = 0.0;
-      for (int i = 0; i < 4; i++){
-        float fi = float(i);
-        float y0 = 0.24 + fi * 0.088;
-        float w1 = sin(ux * 4.0  + t * (2.0 + fi * 0.7) + fi * 1.9) * 0.078;
-        float w2 = sin(ux * 9.5  - t * 1.9 + fi * 2.7)               * 0.040;
-        float w3 = sin(ux * 17.0 + t * 1.1)                          * 0.017;
-        float yc = y0 + w1 + w2 + w3;
-        float d  = abs(h - yc);
-        float b  = smoothstep(0.135, 0.0, d);
-        b *= 0.52 + 0.48 * sin(ux * 11.0 + t * 3.0 + fi * 2.0);
-        band += b;
-      }
-      band = clamp(band * 0.62, 0.0, 1.35);
-      vec3 aurA = vec3(0.09, 0.66, 0.52);
-      vec3 aurB = vec3(0.13, 0.44, 0.86);
-      vec3 aurC = vec3(0.36, 0.88, 0.74);
-      vec3 aurCol = mix(aurA, aurB, smoothstep(0.14, 0.58, h));
-      aurCol = mix(aurCol, aurC, (sin(ux * 3.0 + t * 2.2) * 0.5 + 0.5) * 0.4);
-      col += aurCol * band * 0.78;
-      vec2 sp = vec2(ux * 42.0, h * 30.0);
-      float n = vnoise(sp * 2.0);
-      float star = smoothstep(0.982, 1.0, n);
-      star *= smoothstep(0.10, 0.40, h);
-      float tw = 0.7 + 0.3 * sin(uTime * 2.2 + n * 90.0);
-      col += vec3(0.72, 0.80, 0.96) * star * 1.1 * tw;
-      col += vec3(0.085, 0.140, 0.190) * smoothstep(0.18, 0.0, h) * 0.75;
-      gl_FragColor = vec4(col, 1.0);
-    }
-  `
+        vec3 dir = normalize(vWorldPos);
+        float h = clamp(dir.y * 1.15 + 0.07, 0.0, 1.0);
+        vec3 cH = vec3(0.030, 0.078, 0.104);
+        vec3 cM = vec3(0.010, 0.028, 0.062);
+        vec3 cZ = vec3(0.0028, 0.0070, 0.0200);
+        vec3 col = mix(cH, cM, smoothstep(0.00, 0.34, h));
+        col = mix(col, cZ, smoothstep(0.34, 1.00, h));
+        float ux = atan(dir.z, dir.x) / 3.14159265;
+        float band = sin(ux * 4.0 + uTime * 0.055 * 2.0 + 1.9) * 0.078;
+        band = clamp(band * 1.2, 0.0, 1.0);
+        col += vec3(0.09, 0.66, 0.52) * band * 0.6;
+        gl_FragColor = vec4(col, 1.0);
+    }`
 });
+bgScene.add(new THREE.Mesh(new THREE.SphereGeometry(420, 48, 32), skyMat));
 
-const sky = new THREE.Mesh(new THREE.SphereGeometry(420, 64, 40), skyMat);
-bgScene.add(sky);
+bgScene.add(new THREE.HemisphereLight(0x244a6e, 0x04060b, 0.85));
+const backLight = new THREE.DirectionalLight(0xffcf94, 2.2); backLight.position.set(-14, 42, -95); bgScene.add(backLight);
+const coolLight = new THREE.DirectionalLight(0x5f9cc4, 1.25); coolLight.position.set(28, 22, 16); bgScene.add(coolLight);
 
-const hemiBG = new THREE.HemisphereLight(0x244a6e, 0x04060b, 0.85);
-bgScene.add(hemiBG);
-
-const backLight = new THREE.DirectionalLight(0xffcf94, 2.2);
-backLight.position.set(-14, 42, -95);
-bgScene.add(backLight);
-
-const coolLight = new THREE.DirectionalLight(0x5f9cc4, 1.25);
-coolLight.position.set(28, 22, 16);
-bgScene.add(coolLight);
-
-const boardKey = new THREE.SpotLight(0xffd9a0, 260, 46, Math.PI / 4.2, 0.55, 1.9);
-boardKey.position.set(0, 16, 14);
-boardKey.target.position.set(0, 0, 0);
-bgScene.add(boardKey);
-bgScene.add(boardKey.target);
-
-const castleGlowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
-  map: makeGlowTexture(512, 'rgba(255,214,150,1)', 'rgba(255,180,90,0)'),
-  color: 0xffc98a, transparent: true, opacity: 0.50,
-  blending: THREE.AdditiveBlending, depthWrite: false, fog: false
-}));
-castleGlowSprite.position.set(0, 17, CFG.castleZ + 6);
-castleGlowSprite.scale.set(95, 55, 1);
-bgScene.add(castleGlowSprite);
-
-function buildCastleBG3D(){
-  const g = new THREE.Group();
-  g.position.set(0, 0, CFG.castleZ);
-  g.scale.setScalar(CFG.castleScale);
-  const stone = new THREE.MeshStandardMaterial({ color: COL.stone, roughness: 0.96, metalness: 0.10 });
-  const stoneDark = new THREE.MeshStandardMaterial({ color: COL.stoneDark, roughness: 1.0, metalness: 0.06 });
-  const goldMat = new THREE.MeshStandardMaterial({ color: COL.gold, roughness: 0.28, metalness: 1.0, emissive: COL.gold, emissiveIntensity: 0.65 });
-  const winMat = new THREE.MeshBasicMaterial({ color: 0xffc27a, transparent: true, opacity: 0.85 });
-  const winMat2 = new THREE.MeshBasicMaterial({ color: 0xffe0b0, transparent: true, opacity: 0.55 });
-  const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(x, y, z);
-    m.rotation.set(rx, ry, rz);
-    g.add(m);
-    return m;
-  };
-  add(new THREE.CylinderGeometry(46, 58, 8, 10), stoneDark, 0, -4, -4);
-  add(new THREE.BoxGeometry(15, 30, 11), stone, 0, 15, 0);
-  add(new THREE.BoxGeometry(15.6, 1.0, 11.6), goldMat, 0, 30.2, 0);
-  add(new THREE.BoxGeometry(10, 20, 9), stone, -12, 10, 2);
-  add(new THREE.BoxGeometry(10, 20, 9), stone,  12, 10, 2);
-  add(new THREE.BoxGeometry(10.4, 0.8, 9.4), goldMat, -12, 20.2, 2);
-  add(new THREE.BoxGeometry(10.4, 0.8, 9.4), goldMat,  12, 20.2, 2);
-  const towerXs = [-20, 20];
-  towerXs.forEach(tx => {
-    add(new THREE.CylinderGeometry(4.2, 5.0, 38, 14), stone, tx, 19, 1);
-    add(new THREE.CylinderGeometry(4.6, 4.6, 0.9, 14), goldMat, tx, 38.2, 1);
-    const roof = add(new THREE.ConeGeometry(5.2, 10, 14), stoneDark, tx, 43.6, 1);
-    roof.material = new THREE.MeshStandardMaterial({ color: 0x0a1119, roughness: 0.55, metalness: 0.55 });
-    add(new THREE.SphereGeometry(0.55, 12, 10), goldMat, tx, 49.0, 1);
-    for (let i = 0; i < 3; i++){
-      add(new THREE.PlaneGeometry(1.1, 2.0), winMat, tx, 14 + i * 8, 5.05);
-    }
-  });
-  add(new THREE.CylinderGeometry(3.4, 3.9, 44, 14), stone, 0, 22, -2);
-  add(new THREE.CylinderGeometry(3.8, 3.8, 0.8, 14), goldMat, 0, 44.3, -2);
-  const spire = add(new THREE.ConeGeometry(4.4, 13, 14), stoneDark, 0, 51.4, -2);
-  spire.material = new THREE.MeshStandardMaterial({ color: 0x0a1119, roughness: 0.5, metalness: 0.6 });
-  add(new THREE.SphereGeometry(0.7, 12, 10), goldMat, 0, 58.4, -2);
-  for (let r = 0; r < 3; r++){
-    for (let c = -1; c <= 1; c++){
-      add(new THREE.PlaneGeometry(0.95, 1.9), winMat, c * 4.2, 8 + r * 7.5, 5.56);
-    }
-  }
-  add(new THREE.PlaneGeometry(3.4, 5.2), winMat2, 0, 5.0, 5.57);
-  add(new THREE.BoxGeometry(6.4, 9, 1.2), stoneDark, 0, 4.5, 6.0);
-  add(new THREE.BoxGeometry(6.9, 0.7, 1.6), goldMat, 0, 9.2, 6.0);
-  add(new THREE.PlaneGeometry(4.6, 6.2), winMat, 0, 4.2, 6.65);
-  function battlements(cx, cz, w, d, y, count, sw = 1.0, sh = 1.6){
-    for (let i = 0; i < count; i++){
-      const t = (i + 0.5) / count;
-      add(new THREE.BoxGeometry(sw, sh, sw), stone, cx - w/2 + t*w, y, cz + d/2);
-      add(new THREE.BoxGeometry(sw, sh, sw), stone, cx - w/2 + t*w, y, cz - d/2);
-    }
-    for (let i = 0; i < Math.round(count * d / w); i++){
-      const t = (i + 0.5) / Math.round(count * d / w);
-      add(new THREE.BoxGeometry(sw, sh, sw), stone, cx + w/2, y, cz - d/2 + t*d);
-      add(new THREE.BoxGeometry(sw, sh, sw), stone, cx - w/2, y, cz - d/2 + t*d);
-    }
-  }
-  battlements(0, 0, 15, 11, 30.8, 8);
-  battlements(-12, 2, 10, 9, 20.8, 6);
-  battlements( 12, 2, 10, 9, 20.8, 6);
-  add(new THREE.BoxGeometry(64, 7, 3.2), stone, 0, 3.5, 14);
-  add(new THREE.BoxGeometry(64.6, 0.6, 3.6), goldMat, 0, 7.2, 14);
-  for (let i = 0; i < 22; i++){
-    add(new THREE.BoxGeometry(1.5, 1.5, 1.5), stone, -31 + i * 2.95, 8.0, 14);
-  }
-  [ -20, 20, 0 ].forEach((x, i) => {
-    const y = i === 2 ? 58.8 : 49.6;
-    const z = i === 2 ? -2 : 1;
-    add(new THREE.CylinderGeometry(0.09, 0.09, 4.2, 6), goldMat, x, y + 2.1, z);
-    const flag = add(new THREE.PlaneGeometry(2.0, 1.2), goldMat, x + 1.05, y + 3.3, z);
-    flag.material = new THREE.MeshBasicMaterial({ color: 0xd8b878, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
-  });
-  return g;
-}
-
-bgScene.add(buildCastleBG3D());
-
-(function mountainsBG(){
-  const mat = new THREE.MeshStandardMaterial({ color: 0x070d16, roughness: 1.0, metalness: 0.0 });
-  const group = new THREE.Group();
-  for (let i = 0; i < 14; i++){
-    const r = 8 + Math.random() * 14;
-    const h = 16 + Math.random() * 26;
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, 5), mat);
-    cone.position.set(-110 + i * 17 + (Math.random() - 0.5) * 12, h / 2 - 4, -150 - Math.random() * 40);
-    cone.rotation.y = Math.random() * Math.PI;
-    group.add(cone);
-  }
-  bgScene.add(group);
+(function castle(){
+    const g = new THREE.Group();
+    g.position.set(0, 0, -68);
+    const stone = new THREE.MeshStandardMaterial({ color: COL.stone, roughness: 0.96 });
+    const stoneD = new THREE.MeshStandardMaterial({ color: COL.stoneDark, roughness: 1.0 });
+    const gold = new THREE.MeshStandardMaterial({ color: COL.gold, roughness: 0.28, metalness: 1.0, emissive: COL.gold, emissiveIntensity: 0.65 });
+    const main = new THREE.Mesh(new THREE.BoxGeometry(15, 30, 11), stone); main.position.set(0, 15, 0); g.add(main);
+    const top1 = new THREE.Mesh(new THREE.BoxGeometry(15.6, 1, 11.6), gold); top1.position.set(0, 30.2, 0); g.add(top1);
+    [-20, 20].forEach(tx => {
+        const t = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 5, 38, 12), stone); t.position.set(tx, 19, 1); g.add(t);
+        const th = new THREE.Mesh(new THREE.ConeGeometry(5.2, 10, 12), stoneD); th.position.set(tx, 43.6, 1); g.add(th);
+    });
+    bgScene.add(g);
 })();
 
-const BOARD = { size: CFG.boardSize, tiles: 8 };
-BOARD.tile = BOARD.size / BOARD.tiles;
-BOARD.half = BOARD.size / 2;
-
-const boardGroup = new THREE.Group();
-bgScene.add(boardGroup);
-
-const marbleDark  = makeMarbleTexture('#0a0a0c', '#6b5a34');
-const marbleLight = makeMarbleTexture('#241c10', '#c9a96a');
-
-const baseMatBG = new THREE.MeshStandardMaterial({ color: 0x0a0b0e, roughness: 0.42, metalness: 0.75, envMapIntensity: 1.1 });
-const baseMeshBG = new THREE.Mesh(new THREE.BoxGeometry(BOARD.size + 0.9, 0.62, BOARD.size + 0.9), baseMatBG);
-baseMeshBG.position.y = -0.31;
-boardGroup.add(baseMeshBG);
-
-const rimMat = new THREE.MeshStandardMaterial({ color: COL.gold, roughness: 0.22, metalness: 1.0, emissive: COL.gold, emissiveIntensity: 0.45, envMapIntensity: 1.4 });
-const rim = new THREE.Mesh(new THREE.BoxGeometry(BOARD.size + 1.05, 0.10, BOARD.size + 1.05), rimMat);
-rim.position.y = 0.005;
-boardGroup.add(rim);
-
-const innerRim = new THREE.Mesh(
-  new THREE.BoxGeometry(BOARD.size + 0.35, 0.13, BOARD.size + 0.35),
-  new THREE.MeshStandardMaterial({ color: 0x050507, roughness: 0.35, metalness: 0.9 })
-);
-innerRim.position.y = 0.045;
-boardGroup.add(innerRim);
-
-const tileGeoBG = new THREE.BoxGeometry(BOARD.tile - 0.025, 0.12, BOARD.tile - 0.025);
-const lightMatBG = new THREE.MeshPhysicalMaterial({ map: marbleLight, color: 0xb89455, roughness: 0.16, metalness: 0.92, clearcoat: 1.0, clearcoatRoughness: 0.10, envMapIntensity: 1.6 });
-const darkMatBG = new THREE.MeshPhysicalMaterial({ map: marbleDark, color: 0x2a2a30, roughness: 0.10, metalness: 0.96, clearcoat: 1.0, clearcoatRoughness: 0.06, envMapIntensity: 1.9 });
-
-for (let r = 0; r < 8; r++){
-  for (let c = 0; c < 8; c++){
-    const isLight = (r + c) % 2 === 0;
-    const tile = new THREE.Mesh(tileGeoBG, isLight ? lightMatBG : darkMatBG);
-    tile.position.set(-BOARD.half + BOARD.tile * (c + 0.5), 0.06, -BOARD.half + BOARD.tile * (r + 0.5));
-    boardGroup.add(tile);
-  }
-}
-
-const boardGlow = new THREE.Mesh(
-  new THREE.PlaneGeometry(BOARD.size * 1.5, BOARD.size * 1.5),
-  new THREE.MeshBasicMaterial({
-    map: makeGlowTexture(256, 'rgba(201,169,106,1)', 'rgba(201,169,106,0)'),
-    transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false
-  })
-);
-boardGlow.rotation.x = -Math.PI / 2;
-boardGlow.position.y = -0.63;
-boardGroup.add(boardGlow);
-
-function v2(arr){ return arr.map(p => new THREE.Vector2(p[0], p[1])); }
-function arcPts(cx, cy, r, a0, a1, steps){
-  const out = [];
-  for (let i = 0; i <= steps; i++){
-    const a = a0 + (a1 - a0) * (i / steps);
-    out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
-  }
-  return out;
-}
-
-const P_PAWN = [[0.00,0.00],[0.42,0.00],[0.42,0.06],[0.36,0.10],[0.25,0.15],[0.19,0.23],[0.17,0.31],[0.15,0.39],[0.23,0.45],[0.23,0.51],[0.16,0.54],...arcPts(0, 0.72, 0.21, -0.55, Math.PI/2, 9)];
-const P_ROOK = [[0.00,0.00],[0.50,0.00],[0.50,0.08],[0.44,0.13],[0.32,0.19],[0.30,0.30],[0.27,0.44],[0.26,0.58],[0.27,0.68],[0.35,0.73],[0.38,0.78],[0.38,0.94],[0.30,0.94],[0.30,0.84],[0.00,0.84]];
-const P_BISHOP = [[0.00,0.00],[0.46,0.00],[0.46,0.08],[0.39,0.12],[0.27,0.19],[0.21,0.29],[0.19,0.42],[0.29,0.50],[0.31,0.56],[0.21,0.60],[0.25,0.66],...arcPts(0, 0.86, 0.20, -0.90, 0.90, 9),[0.09,1.06],[0.00,1.14]];
-const P_QUEEN = [[0.00,0.00],[0.52,0.00],[0.52,0.09],[0.45,0.14],[0.31,0.21],[0.25,0.34],[0.22,0.50],[0.20,0.64],[0.34,0.72],[0.36,0.78],[0.26,0.82],[0.33,0.90],[0.35,0.96],[0.28,1.00],[0.22,1.06],[0.00,1.14]];
-const P_KING = [[0.00,0.00],[0.54,0.00],[0.54,0.09],[0.47,0.14],[0.33,0.22],[0.27,0.36],[0.24,0.52],[0.22,0.66],[0.36,0.74],[0.38,0.80],[0.28,0.84],[0.35,0.92],[0.36,1.02],[0.00,1.06]];
-
-const pieceDarkMatBG = new THREE.MeshPhysicalMaterial({ color: 0x0d1016, roughness: 0.18, metalness: 0.92, clearcoat: 1.0, clearcoatRoughness: 0.08, envMapIntensity: 2.2 });
-const pieceGoldMatBG = new THREE.MeshPhysicalMaterial({ color: 0x8f7440, roughness: 0.16, metalness: 1.0, clearcoat: 1.0, clearcoatRoughness: 0.05, envMapIntensity: 2.4, emissive: 0x2a1f08, emissiveIntensity: 0.4 });
-const accentGoldMatBG = new THREE.MeshStandardMaterial({ color: COL.gold, roughness: 0.20, metalness: 1.0, emissive: COL.gold, emissiveIntensity: 0.55 });
-
-function createPieceBG(profile, opts = {}){
-  const group = new THREE.Group();
-  const bodyMat = opts.mat || pieceDarkMatBG;
-  const geo = new THREE.LatheGeometry(v2(profile), 40);
-  geo.computeVertexNormals();
-  const body = new THREE.Mesh(geo, bodyMat);
-  group.add(body);
-  if (opts.ringY !== undefined){
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(opts.ringR || 0.28, 0.028, 10, 40), accentGoldMatBG);
-    ring.position.y = opts.ringY;
-    ring.rotation.x = Math.PI / 2;
-    group.add(ring);
-  }
-  if (opts.crenellations){
-    const n = opts.crenellations;
-    for (let i = 0; i < n; i++){
-      const a = (i / n) * Math.PI * 2;
-      const box = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.18, 0.14), bodyMat);
-      box.position.set(Math.cos(a) * 0.33, 0.95, Math.sin(a) * 0.33);
-      group.add(box);
-    }
-  }
-  if (opts.crownSpikes){
-    const n = opts.crownSpikes;
-    for (let i = 0; i < n; i++){
-      const a = (i / n) * Math.PI * 2;
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.17, 6), accentGoldMatBG);
-      spike.position.set(Math.cos(a) * 0.20, 1.11, Math.sin(a) * 0.20);
-      group.add(spike);
-    }
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.075, 14, 12), accentGoldMatBG);
-    orb.position.y = 1.21;
-    group.add(orb);
-  }
-  if (opts.cross){
-    const v = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.30, 0.075), accentGoldMatBG);
-    v.position.y = 1.20;
-    const h = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.075, 0.075), accentGoldMatBG);
-    h.position.y = 1.24;
-    group.add(v, h);
-  }
-  const shadow = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.55, 1.55),
-    new THREE.MeshBasicMaterial({ map: makeGlowTexture(128, 'rgba(0,0,0,0.85)', 'rgba(0,0,0,0)'), transparent: true, opacity: 0.75, depthWrite: false })
-  );
-  shadow.rotation.x = -Math.PI / 2;
-  shadow.position.y = 0.005;
-  group.add(shadow);
-  return group;
-}
-
-const pieceLayout = [
-  [ -3.94, -3.94, 1.55, P_QUEEN,  { mat: pieceDarkMatBG, ringY: 0.76, ringR: 0.30, crownSpikes: 9 } ],
-  [  3.94, -3.94, 1.42, P_KING,   { mat: pieceDarkMatBG, ringY: 0.82, ringR: 0.30, cross: true } ],
-  [ -3.94,  2.06, 1.90, P_ROOK,   { mat: pieceGoldMatBG, crenellations: 8 } ],
-  [  3.94,  2.06, 1.75, P_BISHOP, { mat: pieceDarkMatBG, ringY: 0.68, ringR: 0.26 } ],
-  [ -1.69, -1.69, 1.10, P_PAWN,   { mat: pieceGoldMatBG, ringY: 0.46, ringR: 0.20 } ],
-  [  1.69, -1.69, 1.05, P_PAWN,   { mat: pieceDarkMatBG, ringY: 0.46, ringR: 0.20 } ]
-];
-
-pieceLayout.forEach(([x, z, s, profile, opts]) => {
-  const p = createPieceBG(profile, opts);
-  p.position.set(x, 0.11, z);
-  p.scale.setScalar(s);
-  p.rotation.y = (Math.random() - 0.5) * 0.5;
-  boardGroup.add(p);
-});
-
-const mistGroup = new THREE.Group();
-bgScene.add(mistGroup);
-const mistTex = makeGlowTexture(256, 'rgba(110,180,205,0.85)', 'rgba(110,180,205,0)');
-for (let i = 0; i < 5; i++){
-  const m = new THREE.Mesh(
-    new THREE.PlaneGeometry(90 + i * 24, 26 + i * 6),
-    new THREE.MeshBasicMaterial({ map: mistTex, transparent: true, opacity: 0.10, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })
-  );
-  m.position.set((Math.random() - 0.5) * 20, 2 + i * 1.6, -34 - i * 12);
-  mistGroup.add(m);
-}
-
-const nearMist = new THREE.Mesh(
-  new THREE.PlaneGeometry(34, 14),
-  new THREE.MeshBasicMaterial({ map: makeGlowTexture(256, 'rgba(140,190,215,0.6)', 'rgba(140,190,215,0)'), transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })
-);
-nearMist.position.set(0, 1.6, 9);
-bgScene.add(nearMist);
-
-const P_COUNT = isLowEnd ? 300 : 620;
+const P_COUNT = isLowEnd ? 300 : 500;
 const pGeo = new THREE.BufferGeometry();
 const pPos = new Float32Array(P_COUNT * 3);
 const pVel = new Float32Array(P_COUNT * 3);
-const pPhase = new Float32Array(P_COUNT);
 for (let i = 0; i < P_COUNT; i++){
-  pPos[i * 3 + 0] = (Math.random() - 0.5) * 78;
-  pPos[i * 3 + 1] = Math.random() * 42 - 2;
-  pPos[i * 3 + 2] = -70 + Math.random() * 90;
-  pVel[i * 3 + 0] = (Math.random() - 0.5) * 0.020;
-  pVel[i * 3 + 1] = 0.010 + Math.random() * 0.028;
-  pVel[i * 3 + 2] = (Math.random() - 0.5) * 0.018;
-  pPhase[i] = Math.random() * Math.PI * 2;
+    pPos[i*3] = (Math.random() - 0.5) * 78;
+    pPos[i*3+1] = Math.random() * 42 - 2;
+    pPos[i*3+2] = -70 + Math.random() * 90;
+    pVel[i*3] = (Math.random() - 0.5) * 0.02;
+    pVel[i*3+1] = 0.01 + Math.random() * 0.028;
+    pVel[i*3+2] = (Math.random() - 0.5) * 0.018;
 }
 pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-const pMat = new THREE.PointsMaterial({
-  size: 0.60, map: makeGlowTexture(128, 'rgba(255,236,190,1)', 'rgba(255,200,120,0)'),
-  color: 0xffdca8, transparent: true, opacity: 0.92,
-  blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
-});
-const particlesBG = new THREE.Points(pGeo, pMat);
-bgScene.add(particlesBG);
+const pMat = new THREE.PointsMaterial({ size: 0.6, map: makeGlowTexture(64, 'rgba(255,236,190,1)', 'rgba(255,200,120,0)'), color: 0xffdca8, transparent: true, opacity: 0.92, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true });
+bgScene.add(new THREE.Points(pGeo, pMat));
 
 const clockBG = new THREE.Clock();
-function updateParticlesBG(dt, t){
-  const pos = pGeo.attributes.position.array;
-  for (let i = 0; i < P_COUNT; i++){
-    const i3 = i * 3;
-    pos[i3 + 0] += (pVel[i3 + 0] + Math.sin(t * 0.5 + pPhase[i]) * 0.006) * dt * 60;
-    pos[i3 + 1] += pVel[i3 + 1] * dt * 60;
-    pos[i3 + 2] += (pVel[i3 + 2] + Math.cos(t * 0.4 + pPhase[i]) * 0.005) * dt * 60;
-    if (pos[i3 + 1] > 42){
-      pos[i3 + 1] = -2;
-      pos[i3 + 0] = (Math.random() - 0.5) * 78;
-      pos[i3 + 2] = -70 + Math.random() * 90;
-    }
-    if (pos[i3 + 0] >  40) pos[i3 + 0] = -40;
-    if (pos[i3 + 0] < -40) pos[i3 + 0] =  40;
-  }
-  pGeo.attributes.position.needsUpdate = true;
-}
-
 let elapsedBG = 0;
 function animateBG(){
-  requestAnimationFrame(animateBG);
-  const dt = Math.min(clockBG.getDelta(), 0.05);
-  const gameScreen = document.getElementById('gameScreen');
-  if (gameScreen && gameScreen.classList.contains('active')) return;
-  elapsedBG += dt;
-  skyUniforms.uTime.value = elapsedBG;
-  bgCamera.position.x = CFG.camPos.x + Math.sin(elapsedBG * 0.16) * 0.55;
-  bgCamera.position.y = CFG.camPos.y + Math.sin(elapsedBG * 0.11 + 1.3) * 0.22;
-  bgCamera.lookAt(CFG.camLook);
-  updateParticlesBG(dt, elapsedBG);
-  mistGroup.children.forEach((m, i) => {
-    m.position.x = Math.sin(elapsedBG * 0.05 + i * 1.7) * 9;
-    m.material.opacity = 0.085 + Math.sin(elapsedBG * 0.32 + i * 1.1) * 0.030;
-  });
-  nearMist.position.x = Math.sin(elapsedBG * 0.08) * 4;
-  nearMist.material.opacity = 0.075 + Math.sin(elapsedBG * 0.4) * 0.022;
-  castleGlowSprite.material.opacity = 0.46 + Math.sin(elapsedBG * 0.55) * 0.09;
-  rimMat.emissiveIntensity = 0.40 + Math.sin(elapsedBG * 0.9) * 0.12;
-  if (composer) composer.render();
-  else if (bgRenderer) bgRenderer.render(bgScene, bgCamera);
+    requestAnimationFrame(animateBG);
+    const dt = Math.min(clockBG.getDelta(), 0.05);
+    const gs = document.getElementById('gameScreen');
+    if (gs && gs.classList.contains('active')) return;
+    elapsedBG += dt;
+    skyUniforms.uTime.value = elapsedBG;
+    bgCamera.position.x = CFG.camPos.x + Math.sin(elapsedBG * 0.16) * 0.55;
+    bgCamera.position.y = CFG.camPos.y + Math.sin(elapsedBG * 0.11 + 1.3) * 0.22;
+    bgCamera.lookAt(CFG.camLook);
+    const pos = pGeo.attributes.position.array;
+    for (let i = 0; i < P_COUNT; i++){
+        const i3 = i*3;
+        pos[i3] += pVel[i3] * dt * 60;
+        pos[i3+1] += pVel[i3+1] * dt * 60;
+        pos[i3+2] += pVel[i3+2] * dt * 60;
+        if (pos[i3+1] > 42){ pos[i3+1] = -2; pos[i3] = (Math.random()-0.5)*78; pos[i3+2] = -70 + Math.random()*90; }
+    }
+    pGeo.attributes.position.needsUpdate = true;
+    if (composer) composer.render();
+    else if (bgRenderer) bgRenderer.render(bgScene, bgCamera);
 }
 
 function onResizeBG(){
-  if (!bgRenderer) return;
-  const w = window.innerWidth, h = window.innerHeight;
-  const aspect = w / h;
-  let fov = CFG.fov;
-  if (aspect < 1.0) fov = CFG.fov + (1 / Math.max(aspect, 0.42) - 1) * 21;
-  else fov = CFG.fov - Math.min((aspect - 1) * 5, 9);
-  fov = Math.min(Math.max(fov, 46), 92);
-  bgCamera.fov = fov;
-  bgCamera.aspect = aspect;
-  bgCamera.updateProjectionMatrix();
-  bgRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-  bgRenderer.setSize(w, h);
-  if (composer) {
-    composer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-    composer.setSize(w, h);
-    if (bloomPass) bloomPass.setSize(w, h);
-  }
+    if (!bgRenderer) return;
+    const w = window.innerWidth, h = window.innerHeight;
+    const aspect = w / h;
+    let fov = CFG.fov;
+    if (aspect < 1) fov = CFG.fov + (1 / Math.max(aspect, 0.42) - 1) * 21;
+    else fov = CFG.fov - Math.min((aspect - 1) * 5, 9);
+    fov = Math.min(Math.max(fov, 46), 92);
+    bgCamera.fov = fov; bgCamera.aspect = aspect; bgCamera.updateProjectionMatrix();
+    bgRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    bgRenderer.setSize(w, h);
+    if (composer) {
+        composer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+        composer.setSize(w, h);
+        if (bloomPass) bloomPass.setSize(w, h);
+    }
 }
 
 window.addEventListener("resize", onResizeBG, { passive: true });
@@ -2705,12 +2026,10 @@ window.addEventListener("orientationchange", () => setTimeout(onResizeBG, 180), 
 onResizeBG();
 animateBG();
 
-// إخفاء Splash بعد التحميل الكامل
 setTimeout(() => {
     const s = document.getElementById("splash");
     if (s) { s.classList.add("hide"); setTimeout(() => { if(s.parentNode) s.remove(); }, 1000); }
 }, 3600);
-
 </script>
 
 </body>
