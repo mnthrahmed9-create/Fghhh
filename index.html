@@ -7,8 +7,10 @@
 <title>Monster Chess 3D — المملكة</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800;900&display=swap" rel="stylesheet">
 
-<!-- ⭐ نظام المكافآت المستقل -->
+<!-- ✅✅ نظام المكافآت — الترتيب الإلزامي ✅✅ -->
+<script src="rewards-config.js"></script>
 <script src="rewards.js"></script>
+<!-- ✅✅ نهاية التحميل ✅✅ -->
 
 <style>
     :root{
@@ -952,15 +954,12 @@ const files = "abcdefgh";
 function position(sq){ return { x: files.indexOf(sq[0]) - 3.5, z: Number(sq[1]) - 4.5 }; }
 
 // =========================================================
-// ربط نظام المكافآت — الجزء المُعدّل
+// ربط نظام المكافآت
 // =========================================================
-
-// ⭐ دالة آمنة للوصول إلى RewardsSystem
 function getRS() {
     return (typeof window.RewardsSystem !== 'undefined' && window.RewardsSystem) ? window.RewardsSystem : null;
 }
 
-// ⭐ تحديث الواجهة عند تغيير الرصيد
 window.addEventListener('rewards:balanceChanged', (e) => {
     const b = e.detail;
     const setText = (id, v) => {
@@ -973,7 +972,6 @@ window.addEventListener('rewards:balanceChanged', (e) => {
     setText('ui-level', b.level);
 });
 
-// ⭐ إشعار عند إضافة عملة
 window.addEventListener('rewards:currencyAdded', (e) => {
     const d = e.detail;
     if (!d || d.amount <= 0) return;
@@ -981,31 +979,27 @@ window.addEventListener('rewards:currencyAdded', (e) => {
     showToast(`🎉 +${d.amount} ${icons[d.type] || ''} — ${d.reason || ''}`);
 });
 
-// ⭐ إعادة رسم تلقائي للواجهات عند أي تغيير في الحالة
 window.addEventListener('rewards:stateChanged', () => {
     try {
         if (typeof window.renderDailyRewardsUI === 'function') window.renderDailyRewardsUI();
         if (typeof window.renderAchievementsUI === 'function') window.renderAchievementsUI();
         if (typeof window.renderMissionsUI === 'function') window.renderMissionsUI();
         if (typeof window.renderChestUI === 'function') window.renderChestUI();
-    } catch (e) { /* تجاهل */ }
+    } catch (e) {}
 });
 
-// ⭐ إشعار ترقية المستوى
 window.addEventListener('rewards:levelUp', (e) => {
     if (e.detail && e.detail.level) {
         showToast(`🎊 ترقية! وصلت إلى المستوى ${e.detail.level}`);
     }
 });
 
-// ⭐ إشعار اكتمال إنجاز
 window.addEventListener('rewards:achievementCompleted', (e) => {
     if (e.detail && e.detail.def) {
         showToast(`🏆 إنجاز مكتمل: ${e.detail.def.name}`);
     }
 });
 
-// ⭐ إشعار اكتمال مهمة
 window.addEventListener('rewards:missionCompleted', (e) => {
     if (e.detail && e.detail.def) {
         showToast(`📅 مهمة مكتملة: ${e.detail.def.name}`);
@@ -1013,7 +1007,6 @@ window.addEventListener('rewards:missionCompleted', (e) => {
 });
 
 // ---------- واجهات المكافآت ----------
-
 window.renderDailyRewardsUI = function(){
     const rs = getRS();
     if (!rs) return;
@@ -1602,7 +1595,6 @@ function makeMove(from, to, promotion="q"){
         if(!move) return false;
         if(move.captured && chess.turn()==='b'){
             playerCaptures++;
-            // ⭐ تسجيل الإسقاط في نظام المكافآت
             const rs = getRS();
             if(rs){
                 if (typeof rs.recordCapture === 'function') rs.recordCapture(1);
@@ -1776,12 +1768,9 @@ window.startGame = function(level){
     if(level) document.getElementById('level').value = level;
     if(!gameInitialized) initGame3D();
     window.newGame();
-    // ⭐ تسجيل بداية المباراة في نظام المكافآت
     const rs = getRS();
     if(rs){
-        if (typeof rs.recordGame === 'function') {
-            // لا نسجل النتيجة الآن، فقط المهمة
-        }
+        if (typeof rs.recordGame === 'function') { /* no-op */ }
         rs.updateMission('play1', 1);
     }
     setTimeout(onResize, 50);
@@ -1880,7 +1869,6 @@ function attachCanvasEvents(){
     });
 }
 
-// ⭐ اعتراض updateStatus لتسجيل نتيجة المباراة
 const _origUpdateStatus = updateStatus;
 updateStatus = function(){
     const isOver = _origUpdateStatus();
@@ -1894,10 +1882,8 @@ updateStatus = function(){
                 if(chess.fen() !== expectedFen) return;
                 const rs = getRS();
                 if(chess.turn() === 'b'){
-                    // اللاعب فاز
                     AudioEngine.sfxWin();
                     if(rs){
-                        // ⭐ تسجيل الفوز الكامل
                         if (typeof rs.recordGame === 'function') rs.recordGame('win');
                         rs.updateMission('win1', 1);
                         rs.updateAchievement('win1', 1);
@@ -1907,13 +1893,11 @@ updateStatus = function(){
                         rs.addTrophies(30, 'نقاط ترتيب');
                     }
                 } else {
-                    // اللاعب خسر
                     AudioEngine.sfxLose();
                     if(rs && typeof rs.recordGame === 'function') rs.recordGame('loss');
                 }
             }, 900);
         } else if (chess.isStalemate() || chess.isDraw()) {
-            // ⭐ تسجيل التعادل
             const rs = getRS();
             if(rs && typeof rs.recordGame === 'function') rs.recordGame('draw');
         }
@@ -1927,7 +1911,6 @@ window.addEventListener("orientationchange", () => setTimeout(onResize, 180));
 attachSettingsListeners();
 loadPlayerData();
 
-// ⭐ الانتظار حتى يُحمّل rewards.js ثم تهيئة الواجهات
 function initRewardsUI() {
     try {
         renderDailyRewardsUI();
@@ -1942,13 +1925,11 @@ function initRewardsUI() {
 }
 initRewardsUI();
 
-// ⭐ إعادة محاولة التهيئة إذا تأخر تحميل rewards.js
 setTimeout(() => {
     const rs = getRS();
     if (!rs) {
         console.warn('[Rewards] لم يتم العثور على RewardsSystem');
     } else {
-        // مزامنة الرصيد الحالي مع الواجهة
         try {
             const bal = rs.getBalance();
             const setText = (id, v) => {
@@ -1959,7 +1940,7 @@ setTimeout(() => {
             setText('ui-gems', bal.gems);
             setText('ui-trophies', bal.trophies);
             setText('ui-level', bal.level);
-        } catch (e) { /* ignore */ }
+        } catch (e) {}
     }
 }, 300);
 
