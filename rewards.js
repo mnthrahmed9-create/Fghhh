@@ -1,1148 +1,1053 @@
-/* ============================================================
-   rewards.js — Monster Chess 3D (الإصدار الاحترافي v3.0 - ذهب 🪙)
-   ------------------------------------------------------------
-   ✓ الحفاظ الكامل على الواجهة العامة (Public API) والأحداث
-   ✓ سجل معاملات تفصيلي لكل ربح/خصم
-   ✓ منع تكرار استلام المكافآت (Idempotency)
-   ✓ تحقق صارم من صحة القيم (لا سالب، لا NaN، لا Infinity)
-   ✓ ترحيل تلقائي للبيانات القديمة دون فقدانها
-   ✓ إشعارات متحركة اختيارية (لا تتعارض مع index.html)
-   ✓ دعم Supabase مستقبلاً (hook جاهز)
-   ✓ معالجة استثناءات شاملة
-   ✓ تجميع الأحداث لمنع التكرار وتحسين الأداء
-   ✓ إصلاح خطأ تكرار claimedDays بعد انقطاع السلسلة اليومية
-   ============================================================ */
+/*!
+ * Monster Chess 3D — Rewards System v1.0
+ * نظام المكافآت والعملات الذهبية الاحترافي
+ * مستقل تماماً — لا يحتاج تعديل أي وظيفة في اللعبة
+ */
 (function () {
     'use strict';
 
-    const VERSION = '3.0.0';
-    const LOG_PREFIX = '[Rewards]';
+    if (window.RewardsSystem) {
+        console.warn('[Rewards] Already initialized');
+        return;
+    }
 
     /* ============================================================
-       1) SafeStorage — تخزين آمن مع احتياطي في الذاكرة
-       ============================================================ */
-    const SafeStorage = (function () {
-        let mem = {};
-        let backend = null;
-
-        function testBackend(name) {
-            try {
-                const s = window[name];
-                if (!s) return false;
-                const k = '__mc_test__';
-                s.setItem(k, '1');
-                s.removeItem(k);
-                return true;
-            } catch (e) { return false; }
+       CONFIG
+    ============================================================ */
+    const CONFIG = {
+        storageKey: 'monsterChess_rewards_v1',
+        checksumKey: 'monsterChess_rewards_chk',
+        limits: {
+            maxCoinsPerTx: 50000,
+            maxBalance: 999999999,
+            maxTransactions: 300,
+            minClaimInterval: 400
+        },
+        level: {
+            baseXP: 100,
+            winXP: 60,
+            drawXP: 25,
+            lossXP: 15,
+            captureXP: 8,
+            coinsOnLevelUp: 300,
+            gemsOnLevelUp: 3
+        },
+        dailyRewards: [
+            { icon: '🪙', amount: 100,  type: 'coins' },
+            { icon: '🪙', amount: 250,  type: 'coins' },
+            { icon: '💎', amount: 3,    type: 'gems' },
+            { icon: '🪙', amount: 500,  type: 'coins' },
+            { icon: '🪙', amount: 800,  type: 'coins' },
+            { icon: '💎', amount: 10,   type: 'gems' },
+            { icon: '🏆', amount: 2000, type: 'coins' }
+        ],
+        missions: [
+            { key: 'play1',    name: 'العب مباراة واحدة', target: 1, reward: 150 },
+            { key: 'play3',    name: 'العب 3 مباريات',     target: 3, reward: 350 },
+            { key: 'capture3', name: 'أسقط 3 قطع',         target: 3, reward: 200 },
+            { key: 'capture8', name: 'أسقط 8 قطع',         target: 8, reward: 400 },
+            { key: 'win1',     name: 'اربح مباراة',        target: 1, reward: 250 }
+        ],
+        achievements: [
+            { key: 'win1',       name: 'أول انتصار',         icon: '🥇', target: 1,   reward: 500 },
+            { key: 'win5',       name: 'محارب',              icon: '⚔️', target: 5,   reward: 1500 },
+            { key: 'win20',      name: 'فاتح',               icon: '👑', target: 20,  reward: 5000 },
+            { key: 'capture10',  name: 'صياد',               icon: '🎯', target: 10,  reward: 400 },
+            { key: 'capture100', name: 'مذعور',              icon: '💀', target: 100, reward: 3000 },
+            { key: 'streak3',    name: 'سلسلة 3 انتصارات',   icon: '🔥', target: 3,   reward: 1000 },
+            { key: 'streak7',    name: 'سلسلة 7 انتصارات',   icon: '🌟', target: 7,   reward: 5000 }
+        ],
+        chests: {
+            hero: {
+                name: 'صندوق الأبطال',
+                cooldown: 4 * 60 * 60 * 1000,
+                cost: { coins: 500 },
+                rewards: [
+                    { amount: 200,  type: 'coins',    weight: 40 },
+                    { amount: 500,  type: 'coins',    weight: 25 },
+                    { amount: 1000, type: 'coins',    weight: 15 },
+                    { amount: 2500, type: 'coins',    weight: 8 },
+                    { amount: 3,    type: 'gems',     weight: 8 },
+                    { amount: 10,   type: 'gems',     weight: 3 },
+                    { amount: 50,   type: 'trophies', weight: 1 }
+                ]
+            }
+        },
+        store: [
+            { id: 'dragon_gold',    name: '🐲 تنين ذهبي',      price: 2500, category: 'skin' },
+            { id: 'ghoul_dark',     name: '👹 غول الظلام',     price: 1800, category: 'skin' },
+            { id: 'king_board',     name: '🧿 رقعة الملك',      price: 3000, category: 'board' },
+            { id: 'phoenix_flame',  name: '🔥 عنقاء اللهب',     price: 4000, category: 'skin' },
+            { id: 'crystal_board',  name: '💎 رقعة كريستالية',  price: 5000, category: 'board' },
+            { id: 'golden_monster', name: '🦁 وحش ذهبي',       price: 3500, category: 'skin' }
+        ],
+        supabase: {
+            enabled: false,
+            url: '',
+            anonKey: '',
+            table: 'player_rewards',
+            playerIdKey: 'monsterChess_playerId'
         }
+    };
 
-        if (testBackend('localStorage')) backend = window.localStorage;
-        else if (testBackend('sessionStorage')) backend = window.sessionStorage;
+    /* ============================================================
+       STORAGE (SafeStorage when available, else raw localStorage)
+    ============================================================ */
+    const Storage = {
+        getItem(k) {
+            try { if (window.SafeStorage) return window.SafeStorage.getItem(k); } catch (e) {}
+            try { return localStorage.getItem(k); } catch (e) { return null; }
+        },
+        setItem(k, v) {
+            try { if (window.SafeStorage) { window.SafeStorage.setItem(k, v); return; } } catch (e) {}
+            try { localStorage.setItem(k, v); } catch (e) {}
+        },
+        removeItem(k) {
+            try { if (window.SafeStorage) { window.SafeStorage.removeItem(k); return; } } catch (e) {}
+            try { localStorage.removeItem(k); } catch (e) {}
+        }
+    };
 
+    /* ============================================================
+       STATE
+    ============================================================ */
+    let state = null;
+    let supabaseClient = null;
+    let saveTimer = null;
+    let lastClaimTime = 0;
+
+    function defaultState() {
         return {
-            available: !!backend,
-            getItem(key) {
-                try {
-                    const v = backend ? backend.getItem(key) : (mem[key] || null);
-                    return v;
-                } catch (e) { return mem[key] || null; }
+            version: 1,
+            coins: 500,
+            gems: 0,
+            trophies: 0,
+            xp: 0,
+            stats: {
+                wins: 0, losses: 0, draws: 0, captures: 0,
+                currentStreak: 0, bestStreak: 0,
+                totalEarned: 0, totalSpent: 0
             },
-            setItem(key, value) {
-                try {
-                    if (backend) backend.setItem(key, value);
-                    else mem[key] = value;
-                } catch (e) {
-                    // قد يكون تجاوز السعة؛ احتفظ بالبيانات في الذاكرة
-                    mem[key] = value;
-                }
-            },
-            removeItem(key) {
-                try { if (backend) backend.removeItem(key); } catch (e) {}
-                delete mem[key];
-            }
+            daily: { lastClaimDate: null, streak: 0 },
+            lastMissionReset: null,
+            achievements: {},
+            missions: {},
+            chests: {},
+            ownedItems: [],
+            transactions: [],
+            createdAt: Date.now(),
+            lastSaved: Date.now()
         };
-    })();
-
-    const Storage = window.SafeStorage || SafeStorage;
-
-    /* ============================================================
-       2) المفاتيح والإعدادات (متوافقة مع الإصدارات السابقة)
-       ============================================================ */
-    const STORAGE_KEY = 'monsterChessRewards_v2_Coins';
-    // مفاتيح ترحيل اختيارية في حال وجود إصدارات وسيطة
-    const LEGACY_KEYS = [
-        'monsterChessRewards_v3_Coins',
-        'monsterChessRewards_v1_Coins'
-    ];
-
-    const STATE_SCHEMA = 3;
-    const TX_LIMIT = 100;
-    const IDEMPOTENCY_TTL = 5 * 60 * 1000;
-    const IDEMPOTENCY_LIMIT = 200;
-
-    /* ============================================================
-       3) إعدادات المكافآت (كما هي في الأصل تماماً)
-       ============================================================ */
-    const DAILY_REWARDS = [
-        { day: 1, type: 'coins', amount: 100,  icon: '🪙' },
-        { day: 2, type: 'coins', amount: 250,  icon: '🪙' },
-        { day: 3, type: 'gems',  amount: 5,    icon: '💎' },
-        { day: 4, type: 'coins', amount: 500,  icon: '🪙' },
-        { day: 5, type: 'gems',  amount: 10,   icon: '💎' },
-        { day: 6, type: 'coins', amount: 1000, icon: '🪙' },
-        { day: 7, type: 'gems',  amount: 25,   icon: '💎' }
-    ];
-
-    const ACHIEVEMENTS_DEF = [
-        { key: 'win1',       name: '🏅 أول فوز',         target: 1,   reward: 100,  type: 'wins' },
-        { key: 'win5',       name: '⚔️ محارب صاعد',      target: 5,   reward: 500,  type: 'wins' },
-        { key: 'win20',      name: '🔥 بطل الميدان',     target: 20,  reward: 2000, type: 'wins' },
-        { key: 'win50',      name: '👑 أسطورة الشطرنج',  target: 50,  reward: 5000, type: 'wins' },
-        { key: 'capture10',  name: '💀 سفاح البيادق',    target: 10,  reward: 150,  type: 'captures' },
-        { key: 'capture50',  name: '☠️ مدمر الجيوش',     target: 50,  reward: 800,  type: 'captures' },
-        { key: 'capture100', name: '🩸 سفاح محترف',      target: 100, reward: 1500, type: 'captures' },
-        { key: 'play10',     name: '♟️ لاعب مخلص',       target: 10,  reward: 200,  type: 'gamesPlayed' },
-        { key: 'play50',     name: '🏛️ أسطورة الزمن',    target: 50,  reward: 1500, type: 'gamesPlayed' },
-        { key: 'play100',    name: '🌌 خالد',            target: 100, reward: 4000, type: 'gamesPlayed' }
-    ];
-
-    const MISSIONS_DEF = [
-        { key: 'play1',    name: '🎯 العب مباراة واحدة', target: 1, reward: 50,  type: 'gamesPlayed' },
-        { key: 'win1',     name: '🏆 اربح مباراة',        target: 1, reward: 150, type: 'wins' },
-        { key: 'capture3', name: '⚔️ أسقط 3 قطع',         target: 3, reward: 100, type: 'captures' },
-        { key: 'capture5', name: '🩸 أسقط 5 قطع',         target: 5, reward: 200, type: 'captures' }
-    ];
-
-    const CHESTS_DEF = {
-        star: {
-            cost: { coins: 1000 },
-            cooldownMs: 2 * 60 * 60 * 1000,
-            rewards: [
-                { type: 'coins', min: 500, max: 2000, weight: 50 },
-                { type: 'gems',  min: 5,   max: 25,   weight: 35 },
-                { type: 'xp',    min: 50,  max: 200,  weight: 15 }
-            ]
-        }
-    };
-
-    /* ============================================================
-       4) الحالة الافتراضية (مع سجل المعاملات)
-       ============================================================ */
-    const DEFAULT_STATE = {
-        schema: STATE_SCHEMA,
-        balance: { coins: 500, gems: 10, level: 1, xp: 0 },
-        daily:   { lastClaimDate: null, streak: 0, claimedDays: [] },
-        achievements: {},
-        missions:     {},
-        chests:       {},
-        totals: { wins: 0, losses: 0, gamesPlayed: 0, captures: 0 },
-        transactions: []
-    };
-
-    /* ============================================================
-       5) أدوات مساعدة
-       ============================================================ */
-    const todayKey = () => {
-        const d = new Date();
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    };
-    const daysBetween = (a, b) => {
-        if (!a || !b) return Infinity;
-        const d1 = new Date(a + 'T00:00:00');
-        const d2 = new Date(b + 'T00:00:00');
-        return Math.round((d2 - d1) / 86400000);
-    };
-    const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-    const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-
-    function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
-
-    // تحقق صارم من الأرقام (يمنع NaN/Salty/Infinity)
-    function sanitizeAmount(n, allowZero = false) {
-        n = Number(n);
-        if (!Number.isFinite(n)) return 0;
-        n = Math.floor(n);
-        if (n < 0) return 0;
-        if (!allowZero && n === 0) return 0;
-        return n;
     }
-
-    function sanitizeProgress(n) {
-        n = Number(n);
-        if (!Number.isFinite(n)) return 0;
-        return Math.floor(n);
-    }
-
-    function mergeDeep(target, src) {
-        if (!src || typeof src !== 'object') return target;
-        Object.keys(src).forEach(k => {
-            if (Array.isArray(src[k]) || typeof src[k] !== 'object' || src[k] === null) {
-                target[k] = src[k];
-            } else {
-                if (!target[k] || typeof target[k] !== 'object') target[k] = {};
-                mergeDeep(target[k], src[k]);
-            }
-        });
-        return target;
-    }
-
-    // تطهير الحالة المسترجعة (يضمن سلامة الأنواع)
-    function validateState(s) {
-        if (!s || typeof s !== 'object') return deepClone(DEFAULT_STATE);
-
-        if (!s.balance || typeof s.balance !== 'object') s.balance = deepClone(DEFAULT_STATE.balance);
-        s.balance.coins = Math.max(0, sanitizeAmount(s.balance.coins, true));
-        s.balance.gems  = Math.max(0, sanitizeAmount(s.balance.gems, true));
-        s.balance.level = Math.max(1, sanitizeAmount(s.balance.level, true) || 1);
-        s.balance.xp    = Math.max(0, sanitizeAmount(s.balance.xp, true));
-
-        if (!s.daily || typeof s.daily !== 'object') s.daily = deepClone(DEFAULT_STATE.daily);
-        if (!Array.isArray(s.daily.claimedDays)) s.daily.claimedDays = [];
-        s.daily.streak = Math.max(0, sanitizeAmount(s.daily.streak, true));
-
-        if (!s.totals || typeof s.totals !== 'object') s.totals = deepClone(DEFAULT_STATE.totals);
-        ['wins', 'losses', 'gamesPlayed', 'captures'].forEach(k => {
-            s.totals[k] = Math.max(0, sanitizeAmount(s.totals[k], true));
-        });
-
-        if (!Array.isArray(s.transactions)) s.transactions = [];
-        if (s.transactions.length > TX_LIMIT) s.transactions = s.transactions.slice(-TX_LIMIT);
-
-        if (!s.achievements || typeof s.achievements !== 'object') s.achievements = {};
-        if (!s.missions     || typeof s.missions     !== 'object') s.missions = {};
-        if (!s.chests       || typeof s.chests       !== 'object') s.chests = {};
-
-        s.schema = STATE_SCHEMA;
-        return s;
-    }
-
-    /* ============================================================
-       6) تحميل / حفظ الحالة (مع ترحيل تلقائي)
-       ============================================================ */
-    let state = loadState();
 
     function loadState() {
+        const raw = Storage.getItem(CONFIG.storageKey);
+        if (!raw) return defaultState();
         try {
-            let raw = Storage.getItem(STORAGE_KEY);
-
-            // ترحيل تلقائي من مفاتيح قديمة
-            if (!raw) {
-                for (const lk of LEGACY_KEYS) {
-                    const legacy = Storage.getItem(lk);
-                    if (legacy) {
-                        raw = legacy;
-                        try { Storage.setItem(STORAGE_KEY, legacy); } catch (e) {}
-                        break;
-                    }
-                }
-            }
-
-            if (!raw) return deepClone(DEFAULT_STATE);
             const parsed = JSON.parse(raw);
-            const merged = mergeDeep(deepClone(DEFAULT_STATE), parsed);
-            return validateState(merged);
+            const def = defaultState();
+            // shallow merge with defaults for safety
+            const merged = Object.assign({}, def, parsed);
+            merged.stats = Object.assign({}, def.stats, parsed.stats || {});
+            merged.daily = Object.assign({}, def.daily, parsed.daily || {});
+            merged.achievements = parsed.achievements || {};
+            merged.missions = parsed.missions || {};
+            merged.chests = parsed.chests || {};
+            merged.ownedItems = Array.isArray(parsed.ownedItems) ? parsed.ownedItems : [];
+            merged.transactions = Array.isArray(parsed.transactions) ? parsed.transactions : [];
+            return merged;
         } catch (e) {
-            console.warn(LOG_PREFIX, 'فشل تحميل الحالة، سيتم استخدام الحالة الافتراضية.', e);
-            return deepClone(DEFAULT_STATE);
+            console.warn('[Rewards] Corrupt state, resetting:', e);
+            return defaultState();
         }
     }
 
-    function saveState() {
-        try {
-            Storage.setItem(STORAGE_KEY, JSON.stringify(state));
-        } catch (e) {
-            console.error(LOG_PREFIX, 'فشل حفظ الحالة:', e);
+    function saveState(immediate) {
+        if (!state) return;
+        state.lastSaved = Date.now();
+        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+        const doSave = () => {
+            try {
+                const json = JSON.stringify(state);
+                Storage.setItem(CONFIG.storageKey, json);
+                Storage.setItem(CONFIG.checksumKey, hash32(json));
+            } catch (e) { /* quota */ }
+            if (CONFIG.supabase.enabled) syncToSupabase();
+        };
+        if (immediate) doSave();
+        else saveTimer = setTimeout(doSave, 80);
+    }
+
+    function verifyChecksum() {
+        const raw = Storage.getItem(CONFIG.storageKey);
+        const chk = Storage.getItem(CONFIG.checksumKey);
+        if (!raw || !chk) return;
+        if (hash32(raw) !== chk) {
+            console.warn('[Rewards] Checksum mismatch — possible manual edit');
         }
-        // نقطة تكامل مستقبلية مع Supabase
-        if (_cloudSync.enabled && _cloudSync.client) {
-            _scheduleCloudPush();
+    }
+
+    function hash32(str) {
+        let h = 0x811c9dc5;
+        for (let i = 0; i < str.length; i++) {
+            h ^= str.charCodeAt(i);
+            h = Math.imul(h, 0x01000193);
         }
+        return (h >>> 0).toString(16);
     }
 
     /* ============================================================
-       7) سجل المعاملات (Transactions Log)
-       ============================================================ */
-    function pushTx(entry) {
-        try {
-            if (!Array.isArray(state.transactions)) state.transactions = [];
-            state.transactions.push(Object.assign({ ts: Date.now() }, entry));
-            if (state.transactions.length > TX_LIMIT) {
-                state.transactions = state.transactions.slice(-TX_LIMIT);
-            }
-        } catch (e) { /* تجاهل */ }
-    }
-
-    /* ============================================================
-       8) نظام الأحداث (مع تجميع لتقليل الحمل)
-       ============================================================ */
+       EVENTS
+    ============================================================ */
     function emit(name, detail) {
         try {
-            window.dispatchEvent(new CustomEvent('rewards:' + name, { detail }));
-        } catch (e) { /* تجاهل */ }
-    }
-
-    let _batchDepth = 0;
-    let _balanceChangedPending = false;
-    let _stateChangedPending = false;
-
-    function _batch(fn) {
-        _batchDepth++;
-        try {
-            return fn();
-        } finally {
-            _batchDepth--;
-            if (_batchDepth === 0) {
-                if (_balanceChangedPending) {
-                    _balanceChangedPending = false;
-                    emit('balanceChanged', { ...state.balance });
-                }
-                if (_stateChangedPending) {
-                    _stateChangedPending = false;
-                    emit('stateChanged', { state: deepClone(state) });
-                }
-            }
-        }
-    }
-
-    function emitBalanceChanged() {
-        if (_batchDepth > 0) { _balanceChangedPending = true; return; }
-        emit('balanceChanged', { ...state.balance });
-    }
-
-    function emitStateChanged() {
-        if (_batchDepth > 0) { _stateChangedPending = true; return; }
-        emit('stateChanged', { state: deepClone(state) });
+            window.dispatchEvent(new CustomEvent('rewards:' + name, { detail: detail || null }));
+        } catch (e) {}
     }
 
     /* ============================================================
-       9) نظام الإشعارات (اختياري وآمن — لا يتعارض مع index.html)
-       ============================================================ */
-    let _hasExternalToast = null;
-    function hasExternalToast() {
-        if (_hasExternalToast !== null) return _hasExternalToast;
-        try {
-            _hasExternalToast =
-                typeof window.showToast === 'function' ||
-                (window.Toast && typeof window.Toast.show === 'function') ||
-                (window.Notifications && typeof window.Notifications.show === 'function');
-        } catch (e) {
-            _hasExternalToast = false;
-        }
-        return _hasExternalToast;
+       HELPERS
+    ============================================================ */
+    function todayStr() {
+        const d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
-
-    const _notifyDedupe = new Map();
-    function _notifyAllowed(key) {
-        const now = Date.now();
-        const last = _notifyDedupe.get(key) || 0;
-        if (now - last < 500) return false;
-        _notifyDedupe.set(key, now);
-        // تنظيف
-        if (_notifyDedupe.size > 60) {
-            for (const [k, t] of _notifyDedupe) {
-                if (now - t > 5000) _notifyDedupe.delete(k);
-            }
-        }
-        return true;
+    function yesterdayStr() {
+        const d = new Date(Date.now() - 86400000);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
-
-    function _builtinToast(message, type) {
-        try {
-            if (typeof document === 'undefined' || !document.body) return;
-            if (!document.head) return;
-
-            if (!document.getElementById('mc-rewards-toast-style')) {
-                const style = document.createElement('style');
-                style.id = 'mc-rewards-toast-style';
-                style.textContent =
-                    '.mc-rewards-toast-container{position:fixed;top:20px;right:20px;z-index:999999;' +
-                    'display:flex;flex-direction:column;gap:8px;pointer-events:none;}' +
-                    '.mc-rewards-toast{background:rgba(20,20,30,.95);color:#fff;padding:10px 16px;' +
-                    'border-radius:10px;font-size:14px;border:1px solid rgba(255,215,0,.6);' +
-                    'box-shadow:0 4px 20px rgba(0,0,0,.4);min-width:180px;' +
-                    'animation:mcToastIn .3s ease-out,mcToastOut .3s ease-in 1.7s forwards;' +
-                    'backdrop-filter:blur(6px);font-family:inherit;}' +
-                    '.mc-rewards-toast.gems{border-color:#6cf;}' +
-                    '.mc-rewards-toast.error{border-color:#f66;}' +
-                    '.mc-rewards-toast.success{border-color:#6f6;}' +
-                    '@keyframes mcToastIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}' +
-                    '@keyframes mcToastOut{to{transform:translateX(120%);opacity:0}}';
-                document.head.appendChild(style);
-            }
-
-            let container = document.querySelector('.mc-rewards-toast-container');
-            if (!container) {
-                container = document.createElement('div');
-                container.className = 'mc-rewards-toast-container';
-                document.body.appendChild(container);
-            }
-
-            const t = document.createElement('div');
-            t.className = 'mc-rewards-toast ' + (type || '');
-            t.textContent = message;
-            container.appendChild(t);
-            setTimeout(() => { try { t.remove(); } catch (e) {} }, 2100);
-        } catch (e) { /* تجاهل */ }
-    }
-
-    function maybeToast(message, type = 'info') {
-        try {
-            if (window.__mcDisableBuiltinToast === true) return;
-            if (!message) return;
-            if (!_notifyAllowed(type + '|' + message)) return;
-            emit('notify', { message, type });
-            if (hasExternalToast()) return; // اللعبة ستتولى الإشعار
-            _builtinToast(message, type);
-        } catch (e) { /* تجاهل */ }
+    function uid() {
+        return 'tx_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
     }
 
     /* ============================================================
-       10) حماية من تكرار العمليات (Idempotency)
-       ============================================================ */
-    const _idempotencyMap = new Map();
-    function _checkIdempotency(key) {
-        if (!key) return true;
-        const now = Date.now();
-        if (_idempotencyMap.size > IDEMPOTENCY_LIMIT) {
-            for (const [k, t] of _idempotencyMap) {
-                if (now - t > IDEMPOTENCY_TTL) _idempotencyMap.delete(k);
-            }
-        }
-        if (_idempotencyMap.has(key)) {
-            const ts = _idempotencyMap.get(key);
-            if (now - ts < IDEMPOTENCY_TTL) return false;
-        }
-        _idempotencyMap.set(key, now);
-        return true;
-    }
-
-    /* ============================================================
-       11) المستويات (Levels & XP)
-       ============================================================ */
-    function xpForLevel(level) {
-        const lv = Math.max(1, Math.floor(Number(level) || 1));
-        return Math.floor(100 * Math.pow(lv, 1.5));
-    }
-
-    function addXp(amount) {
-        amount = Number(amount);
+       CURRENCY (low-level)
+    ============================================================ */
+    function _addCurrencyDirect(type, amount, reason, silent) {
         if (!Number.isFinite(amount) || amount <= 0) return;
-        amount = Math.floor(amount);
-
-        state.balance.xp += amount;
-        let leveled = false;
-
-        while (state.balance.xp >= xpForLevel(state.balance.level)) {
-            state.balance.xp -= xpForLevel(state.balance.level);
-            state.balance.level += 1;
-            leveled = true;
-            state.balance.gems += 10;
-            pushTx({
-                type: 'levelUp',
-                currency: 'gems',
-                amount: 10,
-                reason: `ترقية إلى المستوى ${state.balance.level}`,
-                balance: state.balance.gems
-            });
-            emit('levelUp', { level: state.balance.level });
+        if (amount > CONFIG.limits.maxCoinsPerTx) {
+            console.warn('[Rewards] Amount too large, capped:', amount);
+            amount = CONFIG.limits.maxCoinsPerTx;
         }
+        if (type === 'coins') {
+            state.coins = Math.min(state.coins + amount, CONFIG.limits.maxBalance);
+            state.stats.totalEarned += amount;
+        } else if (type === 'gems') {
+            state.gems = Math.min(state.gems + amount, CONFIG.limits.maxBalance);
+        } else if (type === 'trophies') {
+            state.trophies = Math.min(state.trophies + amount, CONFIG.limits.maxBalance);
+        } else {
+            return;
+        }
+        addTransaction(type, amount, reason, 'in');
+        saveState();
+        emit('balanceChanged', getBalance());
+        emit('stateChanged');
+        if (!silent) emit('currencyAdded', { type, amount, reason });
+    }
 
-        if (leveled) {
-            emitBalanceChanged();
-            maybeToast(`⭐ وصلت للمستوى ${state.balance.level}! +10 💎`, 'success');
+    function _removeCurrencyDirect(type, amount, reason) {
+        if (type === 'coins') state.coins = Math.max(0, state.coins - amount);
+        else if (type === 'gems') state.gems = Math.max(0, state.gems - amount);
+        else if (type === 'trophies') state.trophies = Math.max(0, state.trophies - amount);
+        state.stats.totalSpent += amount;
+        addTransaction(type, -amount, reason, 'out');
+        saveState();
+        emit('balanceChanged', getBalance());
+        emit('stateChanged');
+    }
+
+    function _grantRewardInternal(type, amount, reason) {
+        _addCurrencyDirect(type, amount, reason, /*silent*/ true);
+    }
+
+    function addTransaction(type, amount, reason, dir) {
+        const tx = {
+            id: uid(),
+            type,
+            amount,
+            reason: reason || '',
+            dir: dir || (amount > 0 ? 'in' : 'out'),
+            balanceAfter: type === 'coins' ? state.coins : type === 'gems' ? state.gems : state.trophies,
+            timestamp: Date.now()
+        };
+        state.transactions.unshift(tx);
+        if (state.transactions.length > CONFIG.limits.maxTransactions) {
+            state.transactions.length = CONFIG.limits.maxTransactions;
         }
     }
 
+    function addCoins(amount, reason) {
+        _addCurrencyDirect('coins', amount, reason, false);
+    }
+    function addGems(amount, reason) {
+        _addCurrencyDirect('gems', amount, reason, false);
+    }
+    function addTrophies(amount, reason) {
+        _addCurrencyDirect('trophies', amount, reason, false);
+    }
+    function spendCoins(amount, reason) {
+        if (!Number.isFinite(amount) || amount <= 0) return false;
+        if (state.coins < amount) return false;
+        _removeCurrencyDirect('coins', amount, reason);
+        return true;
+    }
+
     /* ============================================================
-       12) التكامل المستقبلي مع Supabase (hook جاهز)
-       ============================================================ */
-    const _cloudSync = {
-        enabled: false,
-        client: null,
-        pushTimer: null
+       LEVEL / XP
+    ============================================================ */
+    function cumulativeXP(level) {
+        return CONFIG.level.baseXP * (level - 1) * level / 2;
+    }
+    function levelFromXP(xp) {
+        let lvl = 1;
+        while (cumulativeXP(lvl + 1) <= xp) lvl++;
+        return lvl;
+    }
+    function getLevelInfo() {
+        const lvl = levelFromXP(state.xp);
+        const curBase = cumulativeXP(lvl);
+        const nextBase = cumulativeXP(lvl + 1);
+        return {
+            level: lvl,
+            xp: state.xp - curBase,
+            xpNeeded: nextBase - curBase,
+            xpTotal: state.xp,
+            percent: Math.round(((state.xp - curBase) / (nextBase - curBase)) * 100)
+        };
+    }
+    function addXP(amount) {
+        if (!Number.isFinite(amount) || amount <= 0) return;
+        const before = levelFromXP(state.xp);
+        state.xp += amount;
+        const after = levelFromXP(state.xp);
+        if (after > before) {
+            _grantRewardInternal('coins', CONFIG.level.coinsOnLevelUp, 'ترقية المستوى ' + after);
+            _grantRewardInternal('gems', CONFIG.level.gemsOnLevelUp, 'ترقية المستوى ' + after);
+            emit('levelUp', { level: after });
+        }
+        saveState();
+        emit('stateChanged');
+    }
+
+    /* ============================================================
+       ACHIEVEMENTS
+    ============================================================ */
+    function ensureAchievements() {
+        CONFIG.achievements.forEach(def => {
+            if (!state.achievements[def.key]) {
+                state.achievements[def.key] = { progress: 0, claimed: false, completed: false };
+            }
+        });
+    }
+    function updateAchievement(key, amount) {
+        const def = CONFIG.achievements.find(a => a.key === key);
+        if (!def) return;
+        ensureAchievements();
+        const ach = state.achievements[key];
+        ach.progress += amount;
+        if (!ach.completed && ach.progress >= def.target) {
+            ach.completed = true;
+            emit('achievementCompleted', { def: Object.assign({ key }, def) });
+        }
+        saveState();
+        emit('stateChanged');
+    }
+    function setAchievementProgress(key, value) {
+        const def = CONFIG.achievements.find(a => a.key === key);
+        if (!def) return;
+        ensureAchievements();
+        const ach = state.achievements[key];
+        if (value > ach.progress) ach.progress = value;
+        if (!ach.completed && ach.progress >= def.target) {
+            ach.completed = true;
+            emit('achievementCompleted', { def: Object.assign({ key }, def) });
+        }
+        saveState();
+        emit('stateChanged');
+    }
+    function getAchievements() {
+        ensureAchievements();
+        return CONFIG.achievements.map(def => {
+            const ach = state.achievements[def.key];
+            return {
+                key: def.key,
+                name: def.icon + ' ' + def.name,
+                target: def.target,
+                reward: def.reward,
+                progress: Math.min(ach.progress, def.target),
+                completed: !!ach.completed,
+                claimed: !!ach.claimed,
+                percent: Math.min(100, Math.round((ach.progress / def.target) * 100))
+            };
+        });
+    }
+    function claimAchievement(key) {
+        const now = Date.now();
+        if (now - lastClaimTime < CONFIG.limits.minClaimInterval) return { ok: false, error: 'الرجاء الانتظار قليلاً' };
+        const def = CONFIG.achievements.find(a => a.key === key);
+        if (!def) return { ok: false, error: 'إنجاز غير معروف' };
+        const ach = state.achievements[key];
+        if (!ach || !ach.completed) return { ok: false, error: 'لم يكتمل الإنجاز' };
+        if (ach.claimed) return { ok: false, error: 'تم استلام المكافأة مسبقاً' };
+        lastClaimTime = now;
+        ach.claimed = true;
+        _grantRewardInternal('coins', def.reward, 'مكافأة إنجاز: ' + def.name);
+        saveState();
+        return { ok: true, reward: def.reward };
+    }
+
+    /* ============================================================
+       MISSIONS
+    ============================================================ */
+    function ensureMissions() {
+        CONFIG.missions.forEach(def => {
+            if (!state.missions[def.key]) {
+                state.missions[def.key] = { progress: 0, claimed: false, completed: false };
+            }
+        });
+    }
+    function resetMissionsIfNeeded() {
+        const today = todayStr();
+        if (state.lastMissionReset !== today) {
+            state.lastMissionReset = today;
+            state.missions = {};
+            ensureMissions();
+            saveState(true);
+        }
+    }
+    function updateMission(key, amount) {
+        const def = CONFIG.missions.find(m => m.key === key);
+        if (!def) return;
+        ensureMissions();
+        const mis = state.missions[key];
+        mis.progress += amount;
+        if (!mis.completed && mis.progress >= def.target) {
+            mis.completed = true;
+            emit('missionCompleted', { def: Object.assign({ key }, def) });
+        }
+        saveState();
+        emit('stateChanged');
+    }
+    function getMissions() {
+        ensureMissions();
+        return CONFIG.missions.map(def => {
+            const mis = state.missions[def.key];
+            return {
+                key: def.key,
+                name: def.name,
+                target: def.target,
+                reward: def.reward,
+                progress: Math.min(mis.progress, def.target),
+                completed: !!mis.completed,
+                claimed: !!mis.claimed,
+                percent: Math.min(100, Math.round((mis.progress / def.target) * 100))
+            };
+        });
+    }
+    function claimMission(key) {
+        const now = Date.now();
+        if (now - lastClaimTime < CONFIG.limits.minClaimInterval) return { ok: false, error: 'الرجاء الانتظار قليلاً' };
+        const def = CONFIG.missions.find(m => m.key === key);
+        if (!def) return { ok: false, error: 'مهمة غير معروفة' };
+        const mis = state.missions[key];
+        if (!mis || !mis.completed) return { ok: false, error: 'لم تكتمل المهمة' };
+        if (mis.claimed) return { ok: false, error: 'تم استلام المكافأة مسبقاً' };
+        lastClaimTime = now;
+        mis.claimed = true;
+        _grantRewardInternal('coins', def.reward, 'مكافأة مهمة: ' + def.name);
+        saveState();
+        return { ok: true, reward: def.reward };
+    }
+
+    /* ============================================================
+       DAILY REWARDS
+    ============================================================ */
+    function checkDailyStreakReset() {
+        const today = todayStr();
+        const yesterday = yesterdayStr();
+        if (state.daily.lastClaimDate &&
+            state.daily.lastClaimDate !== today &&
+            state.daily.lastClaimDate !== yesterday) {
+            state.daily.streak = 0;
+            saveState();
+        }
+    }
+    function getDailyStatus() {
+        checkDailyStreakReset();
+        resetMissionsIfNeeded();
+        const today = todayStr();
+        const canClaim = state.daily.lastClaimDate !== today;
+        const streak = state.daily.streak % 7;
+        const rewards = CONFIG.dailyRewards.map((rw, i) => ({
+            day: i + 1,
+            icon: rw.icon,
+            amount: rw.amount,
+            type: rw.type,
+            claimed: i < streak,
+            isCurrent: i === streak && canClaim
+        }));
+        return { rewards, canClaim, streak };
+    }
+    function claimDaily(index) {
+        const today = todayStr();
+        if (state.daily.lastClaimDate === today) return { ok: false, error: 'تم استلام مكافأة اليوم' };
+        const streak = state.daily.streak % 7;
+        if (index !== streak) return { ok: false, error: 'اليوم غير صالح' };
+        const now = Date.now();
+        if (now - lastClaimTime < CONFIG.limits.minClaimInterval) return { ok: false, error: 'الرجاء الانتظار قليلاً' };
+        lastClaimTime = now;
+        const rw = CONFIG.dailyRewards[index];
+        if (!rw) return { ok: false, error: 'مكافأة غير صالحة' };
+        _grantRewardInternal(rw.type, rw.amount, 'المكافأة اليومية - اليوم ' + (index + 1));
+        state.daily.lastClaimDate = today;
+        state.daily.streak = (state.daily.streak + 1) % 7;
+        saveState();
+        return { ok: true, reward: { amount: rw.amount, type: rw.type } };
+    }
+
+    /* ============================================================
+       CHESTS
+    ============================================================ */
+    function getChestStatus(type) {
+        const def = CONFIG.chests[type];
+        if (!def) return null;
+        const rec = state.chests[type] || { lastOpened: 0 };
+        const remainingMs = Math.max(0, (rec.lastOpened + def.cooldown) - Date.now());
+        return {
+            ready: remainingMs === 0,
+            remainingMs,
+            cost: def.cost || { coins: 0 }
+        };
+    }
+    function _pickChestReward(def) {
+        const total = def.rewards.reduce((s, r) => s + r.weight, 0);
+        let roll = Math.random() * total;
+        for (const r of def.rewards) {
+            roll -= r.weight;
+            if (roll <= 0) return r;
+        }
+        return def.rewards[def.rewards.length - 1];
+    }
+    function openChest(type) {
+        const def = CONFIG.chests[type];
+        if (!def) return { ok: false, error: 'صندوق غير معروف' };
+        const status = getChestStatus(type);
+        if (!status.ready) return { ok: false, error: 'الصندوق غير جاهز' };
+        const cost = (def.cost && def.cost.coins) || 0;
+        if (state.coins < cost) return { ok: false, error: 'رصيد غير كافٍ' };
+        if (cost > 0) _removeCurrencyDirect('coins', cost, 'فتح ' + def.name);
+        const reward = _pickChestReward(def);
+        _grantRewardInternal(reward.type, reward.amount, 'مكافأة صندوق');
+        state.chests[type] = { lastOpened: Date.now() };
+        saveState();
+        return { ok: true, reward: { amount: reward.amount, type: reward.type } };
+    }
+
+    /* ============================================================
+       STORE
+    ============================================================ */
+    function ownsItem(id) {
+        return state.ownedItems.indexOf(id) !== -1;
+    }
+    function getStoreItems() {
+        return CONFIG.store.map(item => Object.assign({}, item, {
+            owned: ownsItem(item.id),
+            canAfford: state.coins >= item.price
+        }));
+    }
+    function purchaseItem(id) {
+        const item = CONFIG.store.find(x => x.id === id);
+        if (!item) return { ok: false, error: 'عنصر غير معروف' };
+        if (ownsItem(id)) return { ok: false, error: 'تملك هذا العنصر مسبقاً' };
+        if (state.coins < item.price) return { ok: false, error: 'رصيد غير كافٍ' };
+        _removeCurrencyDirect('coins', item.price, 'شراء ' + item.name);
+        state.ownedItems.push(id);
+        saveState();
+        return { ok: true, item };
+    }
+
+    /* ============================================================
+       GAME RECORDING
+    ============================================================ */
+    function recordGame(result) {
+        if (result === 'win') {
+            state.stats.wins++;
+            state.stats.currentStreak++;
+            state.stats.bestStreak = Math.max(state.stats.bestStreak, state.stats.currentStreak);
+            addXP(CONFIG.level.winXP);
+            // streak achievements use bestStreak
+            setAchievementProgress('streak3', state.stats.bestStreak);
+            setAchievementProgress('streak7', state.stats.bestStreak);
+        } else if (result === 'loss') {
+            state.stats.losses++;
+            state.stats.currentStreak = 0;
+            addXP(CONFIG.level.lossXP);
+        } else if (result === 'draw') {
+            state.stats.draws++;
+            addXP(CONFIG.level.drawXP);
+        }
+        saveState();
+        emit('stateChanged');
+    }
+    function recordCapture(n) {
+        state.stats.captures += n;
+        addXP(CONFIG.level.captureXP * n);
+        saveState();
+        emit('stateChanged');
+    }
+
+    /* ============================================================
+       BALANCE
+    ============================================================ */
+    function getBalance() {
+        return {
+            coins: state.coins,
+            gems: state.gems,
+            trophies: state.trophies,
+            level: levelFromXP(state.xp)
+        };
+    }
+    function getTransactions(limit) {
+        const n = limit || 30;
+        return state.transactions.slice(0, n);
+    }
+
+    /* ============================================================
+       SUPABASE (optional)
+    ============================================================ */
+    function configureSupabase(cfg) {
+        if (!cfg || !cfg.url || !cfg.anonKey) return false;
+        CONFIG.supabase = Object.assign(CONFIG.supabase, cfg, { enabled: true });
+        try {
+            if (window.supabase && window.supabase.createClient) {
+                supabaseClient = window.supabase.createClient(cfg.url, cfg.anonKey);
+                loadFromSupabase();
+                return true;
+            }
+        } catch (e) { console.warn('[Rewards] Supabase init failed', e); }
+        return false;
+    }
+    async function syncToSupabase() {
+        if (!supabaseClient) return;
+        try {
+            const playerId = Storage.getItem(CONFIG.supabase.playerIdKey) || (() => {
+                const id = 'player_' + Math.random().toString(36).slice(2);
+                Storage.setItem(CONFIG.supabase.playerIdKey, id);
+                return id;
+            })();
+            await supabaseClient.from(CONFIG.supabase.table).upsert({
+                player_id: playerId,
+                state: state,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'player_id' });
+        } catch (e) { /* offline is fine */ }
+    }
+    async function loadFromSupabase() {
+        if (!supabaseClient) return;
+        try {
+            const playerId = Storage.getItem(CONFIG.supabase.playerIdKey);
+            if (!playerId) return;
+            const { data } = await supabaseClient.from(CONFIG.supabase.table)
+                .select('state').eq('player_id', playerId).maybeSingle();
+            if (data && data.state) {
+                // Only accept remote if it has more total earned (higher trust)
+                if ((data.state.stats && data.state.stats.totalEarned || 0) >= (state.stats.totalEarned || 0)) {
+                    state = Object.assign(defaultState(), data.state);
+                    saveState(true);
+                    emit('balanceChanged', getBalance());
+                    emit('stateChanged');
+                }
+            }
+        } catch (e) { /* offline */ }
+    }
+
+    /* ============================================================
+       UI — CSS INJECTION
+    ============================================================ */
+    function injectCSS() {
+        if (document.getElementById('rewards-css')) return;
+        const style = document.createElement('style');
+        style.id = 'rewards-css';
+        style.textContent = `
+/* Coin animations */
+@keyframes rwCoinFly {
+    0%   { transform: translate(var(--sx), var(--sy)) scale(0.4) rotate(0deg); opacity: 0; }
+    15%  { transform: translate(calc(var(--sx) * 0.7), calc(var(--sy) - 60px)) scale(1.3) rotate(180deg); opacity: 1; }
+    100% { transform: translate(var(--ex), var(--ey)) scale(0.4) rotate(720deg); opacity: 0; }
+}
+@keyframes rwCoinBurst {
+    0%   { transform: translate(0, 0) scale(0.3) rotate(0deg); opacity: 0; }
+    20%  { transform: translate(calc(var(--bx) * 0.4), calc(var(--by) * 0.4)) scale(1.4) rotate(180deg); opacity: 1; }
+    100% { transform: translate(var(--bx), var(--by)) scale(0.5) rotate(720deg); opacity: 0; }
+}
+@keyframes rwPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.4); color: #FFD700; filter: drop-shadow(0 0 6px #FFD700); }
+    100% { transform: scale(1); }
+}
+@keyframes rwCoinSpin {
+    0% { transform: rotateY(0deg); }
+    100% { transform: rotateY(360deg); }
+}
+.rw-pulse { animation: rwPulse 0.6s ease; }
+.rw-flying-coin, .rw-burst-coin {
+    position: fixed; z-index: 99999; pointer-events: none;
+    font-size: 32px; user-select: none;
+    will-change: transform, opacity;
+}
+.rw-flying-coin { animation: rwCoinFly 0.85s cubic-bezier(0.4, 0, 0.6, 1) forwards; }
+.rw-burst-coin  { animation: rwCoinBurst 1.6s cubic-bezier(0.3, 0, 0.5, 1) forwards; }
+.rw-3d-coin {
+    width: 96px; height: 96px; margin: 0 auto 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #FFE58A 0%, #D4AF37 45%, #8B6914 100%);
+    box-shadow: 0 0 30px rgba(212,175,55,0.55), inset 0 -6px 16px rgba(0,0,0,0.4), inset 0 6px 12px rgba(255,255,255,0.35);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 44px; color: #5a3f0a; text-shadow: 0 2px 0 #FFE58A;
+    animation: rwCoinSpin 3.5s linear infinite;
+}
+.rw-wallet-balance {
+    display: flex; justify-content: space-around; gap: 8px;
+    padding: 12px; margin-bottom: 12px;
+    background: rgba(10,15,25,0.55); border: 1.5px solid rgba(201,169,106,0.35);
+    border-radius: 14px;
+}
+.rw-wallet-balance .item { text-align: center; flex: 1; }
+.rw-wallet-balance .item b { display: block; font-size: 16px; color: #C9A96A; margin-top: 4px; }
+.rw-wallet-balance .item small { font-size: 10px; color: #8A919C; }
+.rw-tx {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 9px 11px; margin-bottom: 6px;
+    background: rgba(10,15,25,0.5);
+    border-radius: 10px; border: 1px solid rgba(201,169,106,0.15);
+    font-size: 12px; color: #F2EAD9;
+}
+.rw-tx .tx-amt.pos { color: #7BE0A0; font-weight: 900; }
+.rw-tx .tx-amt.neg { color: #B97C6E; font-weight: 900; }
+.rw-tx .tx-time { font-size: 10px; color: #8A919C; margin-top: 2px; }
+.rw-store-item {
+    background: rgba(10,15,25,0.55); border: 1.5px solid rgba(201,169,106,0.25);
+    border-radius: 12px; padding: 11px; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+.rw-store-item.owned { opacity: 0.55; }
+.rw-store-item .info { flex: 1; }
+.rw-store-item .info b { font-size: 13px; color: #F2EAD9; }
+.rw-store-item .info small { display: block; font-size: 10px; color: #8A919C; margin-top: 3px; }
+.rw-store-item .price { color: #C9A96A; font-weight: 900; font-size: 12px; white-space: nowrap; }
+.rw-btn {
+    background: linear-gradient(180deg, var(--champagne-light, #D9C08E), var(--champagne-dark, #A8894F));
+    color: #1A1A1E; border: 1.5px solid rgba(242,234,217,0.6);
+    border-radius: 10px; padding: 6px 14px;
+    font-family: 'Cairo', sans-serif; font-weight: 900; font-size: 11px;
+    cursor: pointer;
+}
+.rw-btn:active { transform: scale(0.95); }
+.rw-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.rw-btn.ghost {
+    background: rgba(10,15,25,0.6); color: #C9A96A;
+    border-color: rgba(201,169,106,0.4);
+}
+`;
+        document.head.appendChild(style);
+    }
+
+    /* ============================================================
+       UI — WALLET MODAL (injected)
+    ============================================================ */
+    function injectWalletModal() {
+        if (document.getElementById('modal-wallet-r')) return;
+        const div = document.createElement('div');
+        div.className = 'modal-overlay';
+        div.id = 'modal-wallet-r';
+        div.innerHTML = `
+            <div class="modal-content">
+                <h2>💰 المحفظة</h2>
+                <div class="rw-3d-coin">🪙</div>
+                <div class="rw-wallet-balance" id="rw-wallet-balance"></div>
+                <div class="modal-section-title">📜 سجل العمليات</div>
+                <div id="rw-wallet-history" style="max-height:280px;overflow-y:auto;"></div>
+                <button class="modal-close" onclick="document.getElementById('modal-wallet-r').classList.remove('active')">إغلاق</button>
+            </div>`;
+        div.addEventListener('click', e => { if (e.target === div) div.classList.remove('active'); });
+        document.body.appendChild(div);
+    }
+
+    function renderWallet() {
+        const bal = getBalance();
+        const balEl = document.getElementById('rw-wallet-balance');
+        if (balEl) {
+            balEl.innerHTML = `
+                <div class="item"><span style="font-size:20px">🪙</span><b>${bal.coins.toLocaleString()}</b><small>عملات</small></div>
+                <div class="item"><span style="font-size:20px">💎</span><b>${bal.gems.toLocaleString()}</b><small>جواهر</small></div>
+                <div class="item"><span style="font-size:20px">⭐</span><b>${bal.trophies.toLocaleString()}</b><small>كؤوس</small></div>
+                <div class="item"><span style="font-size:20px">🏅</span><b>${bal.level}</b><small>مستوى</small></div>`;
+        }
+        const hist = document.getElementById('rw-wallet-history');
+        if (hist) {
+            const txs = getTransactions(50);
+            if (!txs.length) {
+                hist.innerHTML = '<p style="text-align:center;color:#8A919C;padding:20px;">لا توجد عمليات بعد</p>';
+            } else {
+                const icons = { coins: '🪙', gems: '💎', trophies: '⭐' };
+                hist.innerHTML = txs.map(tx => {
+                    const sign = tx.amount >= 0 ? '+' : '';
+                    const cls = tx.amount >= 0 ? 'pos' : 'neg';
+                    const d = new Date(tx.timestamp);
+                    const time = d.toLocaleString('ar-EG', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+                    return `<div class="rw-tx">
+                        <div>
+                            <div>${tx.reason || '—'}</div>
+                            <div class="tx-time">${time}</div>
+                        </div>
+                        <div class="tx-amt ${cls}">${sign}${tx.amount} ${icons[tx.type] || ''}</div>
+                    </div>`;
+                }).join('');
+            }
+        }
+    }
+
+    function openWallet() {
+        const m = document.getElementById('modal-wallet-r');
+        if (!m) return;
+        renderWallet();
+        m.classList.add('active');
+    }
+
+    /* ============================================================
+       UI — STORE RENDERER
+    ============================================================ */
+    function renderStoreModal() {
+        const modal = document.getElementById('modal-store');
+        if (!modal) return;
+        const content = modal.querySelector('.modal-content');
+        if (!content) return;
+        const items = getStoreItems();
+        const bal = state.coins;
+        const itemsHtml = items.map(item => {
+            const catIcon = item.category === 'skin' ? '🎭' : '🎨';
+            let btn;
+            if (item.owned) btn = `<button class="rw-btn" disabled>مملوك ✓</button>`;
+            else if (!item.canAfford) btn = `<button class="rw-btn" disabled>رصيد غير كافٍ</button>`;
+            else btn = `<button class="rw-btn" data-buy="${item.id}">شراء</button>`;
+            return `<div class="rw-store-item ${item.owned ? 'owned' : ''}">
+                <div class="info">
+                    <b>${item.name}</b>
+                    <small>${catIcon} ${item.category}</small>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
+                    <span class="price">🪙 ${item.price.toLocaleString()}</span>
+                    ${btn}
+                </div>
+            </div>`;
+        }).join('');
+
+        content.innerHTML = `
+            <h2>🏪 المتجر</h2>
+            <p style="text-align:center;color:#C4C9D1;font-size:12px;margin-bottom:10px;">
+                رصيدك: 🪙 <b style="color:#C9A96A;">${bal.toLocaleString()}</b>
+            </p>
+            ${itemsHtml}
+            <button class="rw-btn ghost" style="width:100%;margin-top:8px;" onclick="document.getElementById('modal-store').classList.remove('active');RewardsSystem.openWallet();">💰 عرض المحفظة</button>
+            <button class="modal-close" onclick="document.getElementById('modal-store').classList.remove('active')">إغلاق</button>
+        `;
+
+        content.querySelectorAll('[data-buy]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const res = purchaseItem(btn.dataset.buy);
+                if (res.ok) {
+                    showCoinBurst();
+                    toast('🛒 تم شراء: ' + res.item.name);
+                    renderStoreModal();
+                } else {
+                    toast('❌ ' + res.error);
+                }
+            });
+        });
+    }
+
+    function setupStoreObserver() {
+        const modal = document.getElementById('modal-store');
+        if (!modal) return;
+        const obs = new MutationObserver(() => {
+            if (modal.classList.contains('active')) renderStoreModal();
+        });
+        obs.observe(modal, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    /* ============================================================
+       UI — COIN EFFECTS
+    ============================================================ */
+    function showFlyingCoin(targetId) {
+        const target = document.getElementById(targetId);
+        if (!target) return;
+        const tr = target.getBoundingClientRect();
+        const coin = document.createElement('div');
+        coin.className = 'rw-flying-coin';
+        coin.textContent = '🪙';
+        coin.style.left = '50%';
+        coin.style.top = '40%';
+        coin.style.setProperty('--sx', '0px');
+        coin.style.setProperty('--sy', '0px');
+        coin.style.setProperty('--ex', (tr.left + tr.width / 2 - window.innerWidth / 2) + 'px');
+        coin.style.setProperty('--ey', (tr.top + tr.height / 2 - window.innerHeight * 0.4) + 'px');
+        document.body.appendChild(coin);
+        setTimeout(() => coin.remove(), 900);
+    }
+
+    function showCoinBurst() {
+        const count = 32;
+        const burst = document.createElement('div');
+        burst.style.cssText = 'position:fixed;inset:0;z-index:99998;pointer-events:none;';
+        for (let i = 0; i < count; i++) {
+            const c = document.createElement('div');
+            c.className = 'rw-burst-coin';
+            c.textContent = i % 5 === 0 ? '💎' : '🪙';
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 120 + Math.random() * 350;
+            c.style.left = '50%';
+            c.style.top = '45%';
+            c.style.setProperty('--bx', Math.cos(angle) * dist + 'px');
+            c.style.setProperty('--by', Math.sin(angle) * dist + 'px');
+            c.style.animationDelay = (Math.random() * 0.25) + 's';
+            burst.appendChild(c);
+        }
+        document.body.appendChild(burst);
+        setTimeout(() => burst.remove(), 2200);
+    }
+
+    function toast(msg) {
+        if (typeof window.showToast === 'function') {
+            try { window.showToast(msg); return; } catch (e) {}
+        }
+        console.log('[Rewards]', msg);
+    }
+
+    /* ============================================================
+       UI — AUTO ANIMATIONS ON BALANCE CHANGE
+    ============================================================ */
+    let _lastCoins = null;
+    let _lastGems = null;
+
+    function onBalanceChanged(bal) {
+        const coinsEl = document.getElementById('ui-coins');
+        const gemsEl = document.getElementById('ui-gems');
+        if (_lastCoins !== null && bal.coins > _lastCoins && coinsEl) {
+            coinsEl.classList.remove('rw-pulse');
+            void coinsEl.offsetWidth;
+            coinsEl.classList.add('rw-pulse');
+            showFlyingCoin('ui-coins');
+        }
+        if (_lastGems !== null && bal.gems > _lastGems && gemsEl) {
+            gemsEl.classList.remove('rw-pulse');
+            void gemsEl.offsetWidth;
+            gemsEl.classList.add('rw-pulse');
+        }
+        _lastCoins = bal.coins;
+        _lastGems = bal.gems;
+        // Update wallet if open
+        const wallet = document.getElementById('modal-wallet-r');
+        if (wallet && wallet.classList.contains('active')) renderWallet();
+    }
+
+    /* ============================================================
+       UI — EXPOSE
+    ============================================================ */
+    function setupDOM() {
+        injectCSS();
+        injectWalletModal();
+        setupStoreObserver();
+
+        // Coin pill click -> wallet
+        const coinPill = document.querySelector('.res-pill.coin');
+        if (coinPill) {
+            coinPill.addEventListener('click', (e) => {
+                if (e.target.classList && e.target.classList.contains('btn-plus')) return;
+                openWallet();
+            });
+        }
+
+        // Initial sync of balance display
+        emit('balanceChanged', getBalance());
+    }
+
+    /* ============================================================
+       PUBLIC API
+    ============================================================ */
+    window.RewardsSystem = {
+        VERSION: '1.0.0',
+        CONFIG,
+        // Read
+        getBalance,
+        getLevelInfo,
+        getDailyStatus,
+        getAchievements,
+        getMissions,
+        getChestStatus,
+        getStoreItems,
+        getTransactions,
+        ownsItem,
+        // Actions
+        claimDaily,
+        claimAchievement,
+        claimMission,
+        openChest,
+        purchaseItem,
+        openWallet,
+        // Recording
+        recordGame,
+        recordCapture,
+        updateMission,
+        updateAchievement,
+        // Currency
+        addCoins, addGems, addTrophies, spendCoins, addXP,
+        // Supabase
+        configureSupabase,
+        // Debug
+        _export: () => JSON.parse(JSON.stringify(state)),
+        _import: (s) => { state = Object.assign(defaultState(), s); saveState(true); emit('balanceChanged', getBalance()); emit('stateChanged'); },
+        _reset: () => { state = defaultState(); ensureAchievements(); ensureMissions(); saveState(true); emit('balanceChanged', getBalance()); emit('stateChanged'); }
     };
 
-    function _scheduleCloudPush() {
-        if (_cloudSync.pushTimer) return;
-        _cloudSync.pushTimer = setTimeout(() => {
-            _cloudSync.pushTimer = null;
-            try {
-                if (!_cloudSync.enabled || !_cloudSync.client) return;
-                const payload = {
-                    balance: state.balance,
-                    totals: state.totals,
-                    updated_at: new Date().toISOString()
-                };
-                if (typeof _cloudSync.client.from === 'function') {
-                    // مثال توضيحي — المستخدم يجب أن يضبط الجدول والاستيثاق
-                    _cloudSync.client.from('player_rewards').upsert(payload).catch(() => {});
-                }
-            } catch (e) { /* تجاهل */ }
-        }, 1500);
-    }
+    /* ============================================================
+       EVENTS GLUE
+    ============================================================ */
+    window.addEventListener('rewards:balanceChanged', (e) => {
+        if (e.detail) onBalanceChanged(e.detail);
+    });
+
+    // Auto burst on large external coin additions
+    window.addEventListener('rewards:currencyAdded', (e) => {
+        const d = e.detail;
+        if (!d) return;
+        if (d.amount >= 400) showCoinBurst();
+    });
 
     /* ============================================================
-       13) الواجهة العامة (Public API)
-       ============================================================ */
-    const RewardsSystem = {
-
-        VERSION,
-
-        /* ---------- الرصيد والمستوى ---------- */
-        getBalance() {
-            return { ...state.balance };
-        },
-
-        getLevelInfo() {
-            try {
-                const next = xpForLevel(state.balance.level);
-                return {
-                    level: state.balance.level,
-                    xp: state.balance.xp,
-                    nextLevelXp: next,
-                    percent: next > 0 ? Math.min(100, Math.floor((state.balance.xp / next) * 100)) : 0
-                };
-            } catch (e) {
-                return { level: 1, xp: 0, nextLevelXp: 100, percent: 0 };
-            }
-        },
-
-        /* ---------- إضافة عملات ---------- */
-        addCoins(amount, reason = '', options = {}) {
-            return _batch(() => {
-                try {
-                    if (options.idempotencyKey && !_checkIdempotency('coins:' + options.idempotencyKey)) {
-                        emit('claimBlocked', { type: 'coins', reason, key: options.idempotencyKey });
-                        return { ok: false, error: 'duplicate', duplicate: true };
-                    }
-                    const n = sanitizeAmount(amount);
-                    if (n <= 0) return { ok: false, error: 'invalid' };
-
-                    state.balance.coins += n;
-                    pushTx({
-                        type: 'gain', currency: 'coins', amount: n,
-                        reason: String(reason || ''),
-                        balance: state.balance.coins
-                    });
-                    addXp(Math.floor(n / 5));
-                    saveState();
-                    emitBalanceChanged();
-                    emit('currencyAdded', { type: 'coins', amount: n, reason, balance: state.balance.coins });
-
-                    if (!options.silent) {
-                        maybeToast(`+${n} 🪙${reason ? ' — ' + reason : ''}`, 'coins');
-                    }
-                    return { ok: true };
-                } catch (e) {
-                    console.error(LOG_PREFIX, 'addCoins error:', e);
-                    return { ok: false, error: 'exception' };
-                }
-            });
-        },
-
-        /* ---------- إضافة أحجار ---------- */
-        addGems(amount, reason = '', options = {}) {
-            return _batch(() => {
-                try {
-                    if (options.idempotencyKey && !_checkIdempotency('gems:' + options.idempotencyKey)) {
-                        emit('claimBlocked', { type: 'gems', reason, key: options.idempotencyKey });
-                        return { ok: false, error: 'duplicate', duplicate: true };
-                    }
-                    const n = sanitizeAmount(amount);
-                    if (n <= 0) return { ok: false, error: 'invalid' };
-
-                    state.balance.gems += n;
-                    pushTx({
-                        type: 'gain', currency: 'gems', amount: n,
-                        reason: String(reason || ''),
-                        balance: state.balance.gems
-                    });
-                    saveState();
-                    emitBalanceChanged();
-                    emit('currencyAdded', { type: 'gems', amount: n, reason, balance: state.balance.gems });
-
-                    if (!options.silent) {
-                        maybeToast(`+${n} 💎${reason ? ' — ' + reason : ''}`, 'gems');
-                    }
-                    return { ok: true };
-                } catch (e) {
-                    console.error(LOG_PREFIX, 'addGems error:', e);
-                    return { ok: false, error: 'exception' };
-                }
-            });
-        },
-
-        /* ---------- توافق قديم ---------- */
-        addStars(amount, reason = '', options = {}) {
-            return this.addCoins(amount, reason, options);
-        },
-
-        /* ---------- خصم عملات ---------- */
-        spendCoins(amount, reason = '') {
-            return _batch(() => {
-                try {
-                    const n = sanitizeAmount(amount);
-                    if (n <= 0) return { ok: false, error: 'invalid' };
-                    if (state.balance.coins < n) return { ok: false, error: 'لا توجد عملات كافية' };
-
-                    state.balance.coins -= n;
-                    pushTx({
-                        type: 'spend', currency: 'coins', amount: -n,
-                        reason: String(reason || 'spend'),
-                        balance: state.balance.coins
-                    });
-                    saveState();
-                    emitBalanceChanged();
-                    emit('currencySpent', { type: 'coins', amount: n, reason, balance: state.balance.coins });
-                    return { ok: true };
-                } catch (e) {
-                    console.error(LOG_PREFIX, 'spendCoins error:', e);
-                    return { ok: false, error: 'exception' };
-                }
-            });
-        },
-
-        /* ---------- خصم أحجار (جديد — للمرونة) ---------- */
-        spendGems(amount, reason = '') {
-            return _batch(() => {
-                try {
-                    const n = sanitizeAmount(amount);
-                    if (n <= 0) return { ok: false, error: 'invalid' };
-                    if (state.balance.gems < n) return { ok: false, error: 'لا توجد أحجار كافية' };
-
-                    state.balance.gems -= n;
-                    pushTx({
-                        type: 'spend', currency: 'gems', amount: -n,
-                        reason: String(reason || 'spend'),
-                        balance: state.balance.gems
-                    });
-                    saveState();
-                    emitBalanceChanged();
-                    emit('currencySpent', { type: 'gems', amount: n, reason, balance: state.balance.gems });
-                    return { ok: true };
-                } catch (e) {
-                    console.error(LOG_PREFIX, 'spendGems error:', e);
-                    return { ok: false, error: 'exception' };
-                }
-            });
-        },
-
-        /* ---------- إضافة XP يدوياً (جديد — مرن) ---------- */
-        addXp(amount, reason = '') {
-            return _batch(() => {
-                try {
-                    const n = sanitizeAmount(amount);
-                    if (n <= 0) return { ok: false, error: 'invalid' };
-                    addXp(n);
-                    saveState();
-                    emitBalanceChanged();
-                    emitStateChanged();
-                    return { ok: true };
-                } catch (e) {
-                    return { ok: false, error: 'exception' };
-                }
-            });
-        },
-
-        /* ---------- المكافآت اليومية ---------- */
-        getDailyStatus() {
-            try {
-                const today = todayKey();
-                const last = state.daily.lastClaimDate;
-                const gap = last ? daysBetween(last, today) : Infinity;
-
-                // عرض سلسلة صحيحة دون الكتابة في الحالة (تُكتب في claimDaily)
-                let streak = state.daily.streak || 0;
-                let claimedDays = Array.isArray(state.daily.claimedDays) ? [...state.daily.claimedDays] : [];
-
-                if (gap > 1 && last !== null) {
-                    streak = 0;
-                    claimedDays = [];
-                }
-
-                const currentIndex = streak % 7;
-                const canClaim = (last !== today);
-                const rewards = DAILY_REWARDS.map((r, i) => {
-                    const claimed = claimedDays.includes(i);
-                    return {
-                        ...r,
-                        claimed,
-                        isCurrent: (i === currentIndex) && !claimed && canClaim
-                    };
-                });
-
-                return { rewards, streak, canClaim, currentDay: currentIndex + 1 };
-            } catch (e) {
-                console.error(LOG_PREFIX, 'getDailyStatus error:', e);
-                return { rewards: DAILY_REWARDS.map(r => ({ ...r, claimed: false, isCurrent: false })), streak: 0, canClaim: false, currentDay: 1 };
-            }
-        },
-
-        claimDaily(index) {
-            return _batch(() => {
-                try {
-                    const idx = Number(index);
-                    if (!Number.isInteger(idx) || idx < 0 || idx > 6) {
-                        return { ok: false, error: 'invalid index' };
-                    }
-
-                    const today = todayKey();
-                    const last = state.daily.lastClaimDate;
-                    const gap = last ? daysBetween(last, today) : Infinity;
-
-                    // إصلاح: إعادة تعيين claimedDays عند انقطاع السلسلة
-                    if (gap > 1 && last !== null) {
-                        state.daily.streak = 0;
-                        state.daily.claimedDays = [];
-                    }
-
-                    const status = this.getDailyStatus();
-                    if (!status.canClaim) return { ok: false, error: 'تم الاستلام مسبقاً' };
-                    if (idx !== status.currentDay - 1) return { ok: false, error: 'غير متاح' };
-
-                    const rw = DAILY_REWARDS[idx];
-                    if (!rw) return { ok: false, error: 'invalid reward' };
-
-                    if (rw.type === 'coins') {
-                        this.addCoins(rw.amount, 'مكافأة يومية', { silent: true });
-                    } else if (rw.type === 'gems') {
-                        this.addGems(rw.amount, 'مكافأة يومية', { silent: true });
-                    }
-
-                    state.daily.streak = (gap === 1)
-                        ? (state.daily.streak || 0) + 1
-                        : 1;
-                    state.daily.lastClaimDate = today;
-
-                    if (!Array.isArray(state.daily.claimedDays)) state.daily.claimedDays = [];
-                    if (!state.daily.claimedDays.includes(idx)) state.daily.claimedDays.push(idx);
-
-                    if (state.daily.streak > 7) {
-                        state.daily.streak = 1;
-                        state.daily.claimedDays = [idx];
-                    }
-
-                    saveState();
-                    emitStateChanged();
-                    emit('dailyClaimed', { day: idx + 1, reward: rw });
-                    maybeToast(`🎁 مكافأة يوم ${idx + 1}: +${rw.amount} ${rw.icon}`, 'success');
-
-                    return { ok: true, reward: rw };
-                } catch (e) {
-                    console.error(LOG_PREFIX, 'claimDaily error:', e);
-                    return { ok: false, error: 'exception' };
-                }
-            });
-        },
-
-        /* ---------- الإنجازات ---------- */
-        getAchievements() {
-            try {
-                return ACHIEVEMENTS_DEF.map(def => {
-                    const s = state.achievements[def.key] || { progress: 0, claimed: false };
-                    const progress = clamp(sanitizeProgress(s.progress), 0, def.target);
-                    return {
-                        ...def,
-                        progress,
-                        completed: progress >= def.target,
-                        claimed: !!s.claimed,
-                        percent: Math.round((progress / def.target) * 100)
-                    };
-                });
-            } catch (e) {
-                return ACHIEVEMENTS_DEF.map(def => ({ ...def, progress: 0, completed: false, claimed: false, percent: 0 }));
-            }
-        },
-
-        updateAchievement(key, delta) {
-            return _batch(() => {
-                try {
-                    const def = ACHIEVEMENTS_DEF.find(a => a.key === key);
-                    if (!def) return;
-                    const d = sanitizeProgress(delta);
-                    if (d === 0) return;
-
-                    if (!state.achievements[key]) {
-                        state.achievements[key] = { progress: 0, claimed: false };
-                    }
-                    const before = sanitizeProgress(state.achievements[key].progress);
-                    state.achievements[key].progress = clamp(before + d, 0, def.target);
-
-                    saveState();
-
-                    if (before < def.target && state.achievements[key].progress >= def.target) {
-                        emit('achievementCompleted', { key, def });
-                        maybeToast(`🏆 إنجاز مكتمل: ${def.name}`, 'success');
-                    }
-                    emitStateChanged();
-                } catch (e) {
-                    console.error(LOG_PREFIX, 'updateAchievement error:', e);
-                }
-            });
-        },
-
-        claimAchievement(key) {
-            return _batch(() => {
-                try {
-                    const def = ACHIEVEMENTS_DEF.find(a => a.key === key);
-                    if (!def) return { ok: false, error: 'غير موجود' };
-                    const s = state.achievements[key];
-                    if (!s) return { ok: false, error: 'لم يكتمل' };
-                    if (sanitizeProgress(s.progress) < def.target) return { ok: false, error: 'لم يكتمل' };
-                    if (s.claimed) {
-                        emit('claimBlocked', { type: 'achievement', key });
-                        return { ok: false, error: 'تم الاستلام' };
-                    }
-
-                    s.claimed = true;
-                    this.addCoins(def.reward, `إنجاز: ${def.name}`, {
-                        silent: true,
-                        idempotencyKey: 'ach:' + key
-                    });
-                    saveState();
-                    emitStateChanged();
-                    emit('achievementClaimed', { key, def, reward: def.reward });
-                    maybeToast(`🏆 ${def.name} +${def.reward} 🪙`, 'success');
-                    return { ok: true, reward: def.reward };
-                } catch (e) {
-                    console.error(LOG_PREFIX, 'claimAchievement error:', e);
-                    return { ok: false, error: 'exception' };
-                }
-            });
-        },
-
-        /* ---------- المهام ---------- */
-        _ensureMissionsReset() {
-            try {
-                const today = todayKey();
-                if (!state.missions.__resetDate || state.missions.__resetDate !== today) {
-                    state.missions.__resetDate = today;
-                    MISSIONS_DEF.forEach(def => {
-                        state.missions[def.key] = { progress: 0, claimed: false };
-                    });
-                    saveState();
-                }
-            } catch (e) { /* تجاهل */ }
-        },
-
-        getMissions() {
-            try {
-                this._ensureMissionsReset();
-                return MISSIONS_DEF.map(def => {
-                    const s = state.missions[def.key] || { progress: 0, claimed: false };
-                    const progress = clamp(sanitizeProgress(s.progress), 0, def.target);
-                    return {
-                        ...def,
-                        progress,
-                        completed: progress >= def.target,
-                        claimed: !!s.claimed,
-                        percent: Math.round((progress / def.target) * 100)
-                    };
-                });
-            } catch (e) {
-                return MISSIONS_DEF.map(def => ({ ...def, progress: 0, completed: false, claimed: false, percent: 0 }));
-            }
-        },
-
-        updateMission(key, delta) {
-            return _batch(() => {
-                try {
-                    this._ensureMissionsReset();
-                    const def = MISSIONS_DEF.find(m => m.key === key);
-                    if (!def) return;
-                    const d = sanitizeProgress(delta);
-                    if (d === 0) return;
-
-                    if (!state.missions[key]) state.missions[key] = { progress: 0, claimed: false };
-                    if (state.missions[key].claimed) return;
-
-                    const before = sanitizeProgress(state.missions[key].progress);
-                    state.missions[key].progress = clamp(before + d, 0, def.target);
-                    saveState();
-
-                    if (before < def.target && state.missions[key].progress >= def.target) {
-                        emit('missionCompleted', { key, def });
-                        maybeToast(`🎯 مهمة مكتملة: ${def.name}`, 'success');
-                    }
-                    emitStateChanged();
-                } catch (e) {
-                    console.error(LOG_PREFIX, 'updateMission error:', e);
-                }
-            });
-        },
-
-        claimMission(key) {
-            return _batch(() => {
-                try {
-                    this._ensureMissionsReset();
-                    const def = MISSIONS_DEF.find(m => m.key === key);
-                    if (!def) return { ok: false, error: 'غير موجود' };
-                    const s = state.missions[key];
-                    if (!s || sanitizeProgress(s.progress) < def.target) return { ok: false, error: 'لم يكتمل' };
-                    if (s.claimed) {
-                        emit('claimBlocked', { type: 'mission', key });
-                        return { ok: false, error: 'تم الاستلام' };
-                    }
-
-                    s.claimed = true;
-                    this.addCoins(def.reward, `مهمة: ${def.name}`, {
-                        silent: true,
-                        idempotencyKey: 'mis:' + key + ':' + (state.missions.__resetDate || '')
-                    });
-                    saveState();
-                    emitStateChanged();
-                    emit('missionClaimed', { key, def, reward: def.reward });
-                    maybeToast(`🎯 ${def.name} +${def.reward} 🪙`, 'success');
-                    return { ok: true, reward: def.reward };
-                } catch (e) {
-                    console.error(LOG_PREFIX, 'claimMission error:', e);
-                    return { ok: false, error: 'exception' };
-                }
-            });
-        },
-
-        /* ---------- الصناديق ---------- */
-        getChestStatus(key) {
-            try {
-                const def = CHESTS_DEF[key];
-                if (!def) return null;
-                const s = state.chests[key] || {};
-                const last = Number(s.lastOpenTs) || 0;
-                const remaining = Math.max(0, (last + def.cooldownMs) - Date.now());
-                return {
-                    ready: remaining === 0,
-                    remainingMs: remaining,
-                    cost: { ...def.cost }
-                };
-            } catch (e) {
-                return null;
-            }
-        },
-
-        openChest(key) {
-            return _batch(() => {
-                try {
-                    const def = CHESTS_DEF[key];
-                    if (!def) return { ok: false, error: 'غير موجود' };
-
-                    const st = this.getChestStatus(key);
-                    if (!st) return { ok: false, error: 'invalid' };
-                    if (!st.ready) return { ok: false, error: 'انتظر قليلاً' };
-
-                    // تحقق من التكلفة قبل أي تعديل
-                    if (def.cost.coins && state.balance.coins < def.cost.coins) {
-                        return { ok: false, error: 'تحتاج ' + def.cost.coins + ' 🪙' };
-                    }
-                    if (def.cost.gems && state.balance.gems < def.cost.gems) {
-                        return { ok: false, error: 'تحتاج ' + def.cost.gems + ' 💎' };
-                    }
-
-                    // لفة المكافأة قبل الخصم
-                    const totalWeight = def.rewards.reduce((a, r) => a + r.weight, 0);
-                    let roll = Math.random() * totalWeight;
-                    let picked = def.rewards[0];
-                    for (const r of def.rewards) {
-                        if (roll < r.weight) { picked = r; break; }
-                        roll -= r.weight;
-                    }
-                    const amount = randInt(picked.min, picked.max);
-
-                    // خصم
-                    if (def.cost.coins) {
-                        const sp = this.spendCoins(def.cost.coins, 'صندوق');
-                        if (!sp.ok) return sp;
-                    }
-                    if (def.cost.gems) {
-                        const sp = this.spendGems(def.cost.gems, 'صندوق');
-                        if (!sp.ok) return sp;
-                    }
-
-                    // منح
-                    if (picked.type === 'coins') {
-                        this.addCoins(amount, 'صندوق', { silent: true });
-                    } else if (picked.type === 'gems') {
-                        this.addGems(amount, 'صندوق', { silent: true });
-                    } else if (picked.type === 'xp') {
-                        addXp(amount);
-                    }
-
-                    if (!state.chests[key]) state.chests[key] = {};
-                    state.chests[key].lastOpenTs = Date.now();
-
-                    saveState();
-                    emitStateChanged();
-                    emit('chestOpened', { key, reward: { type: picked.type, amount } });
-
-                    const icon = picked.type === 'coins' ? '🪙' : (picked.type === 'gems' ? '💎' : '⭐');
-                    maybeToast(`🎁 فتح الصندوق: +${amount} ${icon}`, 'success');
-
-                    return { ok: true, reward: { type: picked.type, amount } };
-                } catch (e) {
-                    console.error(LOG_PREFIX, 'openChest error:', e);
-                    return { ok: false, error: 'exception' };
-                }
-            });
-        },
-
-        /* ---------- الإحصاءات ---------- */
-        recordGame(result, options = {}) {
-            return _batch(() => {
-                try {
-                    let outcome = result;
-                    if (result && typeof result === 'object') {
-                        outcome = result.result || result.outcome || 'unknown';
-                    }
-
-                    state.totals.gamesPlayed += 1;
-
-                    if (outcome === 'win') {
-                        state.totals.wins += 1;
-                        ['win1', 'win5', 'win20', 'win50'].forEach(k => this.updateAchievement(k, 1));
-                        addXp(50);
-                    } else if (outcome === 'loss') {
-                        state.totals.losses += 1;
-                        addXp(10);
-                    } else {
-                        addXp(20);
-                    }
-
-                    ['play10', 'play50', 'play100'].forEach(k => this.updateAchievement(k, 1));
-
-                    // تحديث المهام اختياري (معطّل افتراضياً حفاظاً على السلوك الأصلي)
-                    if (options.updateMissions === true) {
-                        this.updateMission('play1', 1);
-                        if (outcome === 'win') this.updateMission('win1', 1);
-                    }
-
-                    saveState();
-                    emitStateChanged();
-                    emit('gameRecorded', { outcome, totals: { ...state.totals } });
-                } catch (e) {
-                    console.error(LOG_PREFIX, 'recordGame error:', e);
-                }
-            });
-        },
-
-        recordCapture(count = 1, options = {}) {
-            return _batch(() => {
-                try {
-                    const n = sanitizeAmount(count, true);
-                    if (n <= 0) return;
-
-                    state.totals.captures += n;
-                    ['capture10', 'capture50', 'capture100'].forEach(k => this.updateAchievement(k, n));
-
-                    if (options.updateMissions === true) {
-                        this.updateMission('capture3', n);
-                        this.updateMission('capture5', n);
-                    }
-
-                    saveState();
-                    emitStateChanged();
-                    emit('captureRecorded', { count: n, total: state.totals.captures });
-                } catch (e) {
-                    console.error(LOG_PREFIX, 'recordCapture error:', e);
-                }
-            });
-        },
-
-        /* ---------- سجل المعاملات (جديد) ---------- */
-        getTransactionLog(limit = 20) {
-            try {
-                const log = Array.isArray(state.transactions) ? state.transactions : [];
-                const n = Math.max(1, Math.min(Number(limit) || 20, TX_LIMIT));
-                return log.slice(-n).map(t => ({ ...t }));
-            } catch (e) {
-                return [];
-            }
-        },
-
-        /* ---------- الحالة الكاملة / التصدير (جديد) ---------- */
-        getState() {
-            try { return deepClone(state); }
-            catch (e) { return null; }
-        },
-
-        exportState() {
-            try { return JSON.stringify(state); }
-            catch (e) { return null; }
-        },
-
-        importState(obj, options = {}) {
-            return _batch(() => {
-                try {
-                    if (typeof obj === 'string') obj = JSON.parse(obj);
-                    if (!obj || typeof obj !== 'object') return { ok: false, error: 'invalid' };
-
-                    if (options.merge === true) {
-                        mergeDeep(state, obj);
-                    } else {
-                        state = validateState(mergeDeep(deepClone(DEFAULT_STATE), obj));
-                    }
-                    saveState();
-                    emitBalanceChanged();
-                    emitStateChanged();
-                    return { ok: true };
-                } catch (e) {
-                    console.error(LOG_PREFIX, 'importState error:', e);
-                    return { ok: false, error: 'exception' };
-                }
-            });
-        },
-
-        /* ---------- إشعار يدوي (جديد) ---------- */
-        notify(message, type = 'info') {
-            maybeToast(message, type);
-        },
-
-        /* ---------- تفعيل مزامنة سحابية (Supabase) ---------- */
-        enableCloudSync(client) {
-            if (!client) return false;
-            _cloudSync.client = client;
-            _cloudSync.enabled = true;
-            return true;
-        },
-
-        disableCloudSync() {
-            _cloudSync.enabled = false;
-            _cloudSync.client = null;
-        },
-
-        /* ---------- إعادة تعيين شاملة ---------- */
-        resetAll() {
-            return _batch(() => {
-                try {
-                    state = deepClone(DEFAULT_STATE);
-                    _idempotencyMap.clear();
-                    _notifyDedupe.clear();
-                    saveState();
-                    emitBalanceChanged();
-                    emitStateChanged();
-                    emit('reset', {});
-                    maybeToast('♻️ تم إعادة تعيين النظام', 'info');
-                    return { ok: true };
-                } catch (e) {
-                    return { ok: false, error: 'exception' };
-                }
-            });
+       INIT
+    ============================================================ */
+    function init() {
+        state = loadState();
+        verifyChecksum();
+        ensureAchievements();
+        ensureMissions();
+        checkDailyStreakReset();
+        resetMissionsIfNeeded();
+        saveState(true);
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupDOM);
+        } else {
+            setupDOM();
         }
-    };
 
-    /* ============================================================
-       14) التهيئة والتصدير
-       ============================================================ */
-    window.RewardsSystem = RewardsSystem;
+        // Sync initial balance with UI after module script sets up listeners
+        setTimeout(() => emit('balanceChanged', getBalance()), 200);
+        setTimeout(() => emit('stateChanged'), 400);
 
-    function _emitInitial() {
-        emitBalanceChanged();
-        emitStateChanged();
+        console.log('[Rewards] v1.0.0 ready — coins:', state.coins);
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', _emitInitial, { once: true });
-    } else {
-        setTimeout(_emitInitial, 0);
-    }
-
-    console.log(`${LOG_PREFIX} 🪙 v${VERSION} — نظام العملات الاحترافي جاهز!`);
+    init();
 })();
