@@ -447,14 +447,13 @@
 
 <!-- ============ الكود الرئيسي ============ -->
 <script type="module" id="mainModule">
-// ============ استيراد المكتبات (تم إصلاح OrbitControls هنا) ============
+// ============ استيراد المكتبات ============
 let THREE, Chess, OrbitControls;
 let EffectComposer, RenderPass, UnrealBloomPass, OutputPass;
 
 try {
     THREE = await import('three');
     ({ Chess } = await import('chess'));
-    // ✅ استيراد OrbitControls صراحةً
     ({ OrbitControls } = await import('three/addons/controls/OrbitControls.js'));
     ({ EffectComposer } = await import('three/addons/postprocessing/EffectComposer.js'));
     ({ RenderPass }     = await import('three/addons/postprocessing/RenderPass.js'));
@@ -492,9 +491,241 @@ let playerData = {
 };
 
 const BOARD_SCALE = 1;
+const gameClock = new THREE.Clock(); // [MOD] Added for destruction system
 
 // =========================================================
-// [MonsterBoard — الرقعة الاحترافية الثلاثية الأبعاد]
+// [MOD] نظام التدمير السينمائي (Destruction System)
+// =========================================================
+class ChessDestructionSystem {
+    constructor(scene, camera) {
+        this.scene = scene;
+        this.camera = camera;
+        this.debrisList = [];
+        this.particleSystems = [];
+        this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    triggerDestruction(pieceType, position, pieceColor) {
+        this.playSound(pieceType);
+        switch(pieceType) {
+            case 'pawn': this.createCrystalDestruction(position, pieceColor); break;
+            case 'knight': this.createEnergyDestruction(position, pieceColor); break;
+            case 'bishop': this.createMagicDestruction(position, pieceColor); break;
+            case 'rook': this.createStoneDestruction(position, pieceColor); break;
+            case 'queen': this.createLegendaryDestruction(position, pieceColor); break;
+            case 'king': this.createRoyalCollapse(position, pieceColor); break;
+        }
+    }
+
+    createCrystalDestruction(pos, color) {
+        const shardGeo = new THREE.TetrahedronGeometry(0.1);
+        const shardMat = new THREE.MeshStandardMaterial({ color: color, emissive: 0xffd700, roughness: 0.1, metalness: 0.8 });
+        for (let i = 0; i < 15; i++) {
+            const shard = new THREE.Mesh(shardGeo, shardMat);
+            shard.position.copy(pos);
+            shard.userData.velocity = new THREE.Vector3((Math.random() - 0.5) * 5, Math.random() * 5 + 2, (Math.random() - 0.5) * 5);
+            shard.userData.rotationSpeed = new THREE.Vector3(Math.random(), Math.random(), Math.random());
+            this.scene.add(shard);
+            this.debrisList.push(shard);
+        }
+        this.createSparks(pos, 0xffd700);
+    }
+
+    createEnergyDestruction(pos, color) {
+        const armorGeo = new THREE.BoxGeometry(0.15, 0.15, 0.05);
+        const armorMat = new THREE.MeshStandardMaterial({ color: color, metalness: 0.9, roughness: 0.3 });
+        for (let i = 0; i < 10; i++) {
+            const piece = new THREE.Mesh(armorGeo, armorMat);
+            piece.position.copy(pos);
+            const angle = (i / 10) * Math.PI * 2;
+            piece.userData.velocity = new THREE.Vector3(Math.cos(angle) * 6, Math.random() * 4, Math.sin(angle) * 6);
+            piece.userData.rotationSpeed = new THREE.Vector3(5, 5, 5);
+            this.scene.add(piece);
+            this.debrisList.push(piece);
+        }
+        this.createShockwave(pos, color);
+    }
+
+    createMagicDestruction(pos, color) {
+        const magicGeo = new THREE.OctahedronGeometry(0.08);
+        const magicMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: color, emissiveIntensity: 2 });
+        for (let i = 0; i < 20; i++) {
+            const shard = new THREE.Mesh(magicGeo, magicMat);
+            shard.position.copy(pos);
+            const angle = Math.random() * Math.PI * 2;
+            const radius = Math.random() * 2;
+            shard.userData.velocity = new THREE.Vector3(Math.cos(angle) * radius, Math.random() * 3 + 1, Math.sin(angle) * radius);
+            this.scene.add(shard);
+            this.debrisList.push(shard);
+        }
+        this.createSparks(pos, color);
+    }
+
+    createStoneDestruction(pos, color) {
+        const stoneGeo = new THREE.DodecahedronGeometry(0.2);
+        const stoneMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 1 });
+        for (let i = 0; i < 8; i++) {
+            const rock = new THREE.Mesh(stoneGeo, stoneMat);
+            rock.position.copy(pos);
+            rock.userData.velocity = new THREE.Vector3((Math.random() - 0.5) * 3, Math.random() * 2, (Math.random() - 0.5) * 3);
+            rock.userData.rotationSpeed = new THREE.Vector3(Math.random(), Math.random(), Math.random());
+            this.scene.add(rock);
+            this.debrisList.push(rock);
+        }
+    }
+
+    createLegendaryDestruction(pos, color) {
+        const mixedGeo = new THREE.IcosahedronGeometry(0.12);
+        const mixMat = new THREE.MeshStandardMaterial({ color: color, emissive: 0xffffff, emissiveIntensity: 1.5, metalness: 0.5 });
+        for (let i = 0; i < 30; i++) {
+            const shard = new THREE.Mesh(mixedGeo, mixMat);
+            shard.position.copy(pos);
+            const speed = Math.random() * 10 + 5;
+            const dir = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+            shard.userData.velocity = dir.multiplyScalar(speed);
+            shard.userData.rotationSpeed = new THREE.Vector3(Math.random()*10, Math.random()*10, Math.random()*10);
+            this.scene.add(shard);
+            this.debrisList.push(shard);
+        }
+        this.createShockwave(pos, color);
+    }
+
+    createRoyalCollapse(pos, color) {
+        const glowLight = new THREE.PointLight(color, 5, 10);
+        glowLight.position.copy(pos);
+        this.scene.add(glowLight);
+        setTimeout(() => {
+            this.scene.remove(glowLight);
+            const geo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+            const mat = new THREE.MeshStandardMaterial({ color: color, emissive: 0xffaa00 });
+            for (let i = 0; i < 40; i++) {
+                const piece = new THREE.Mesh(geo, mat);
+                piece.position.copy(pos);
+                piece.userData.velocity = new THREE.Vector3((Math.random() - 0.5) * 2, Math.random() * 2, (Math.random() - 0.5) * 2);
+                this.scene.add(piece);
+                this.debrisList.push(piece);
+            }
+            this.createShockwave(pos, 0xffdd00);
+        }, 300);
+    }
+
+    createSparks(pos, color) {
+        const particleGeo = new THREE.BufferGeometry();
+        const particleCount = 50;
+        const positions = new Float32Array(particleCount * 3);
+        for (let i = 0; i < particleCount * 3; i++) positions[i] = (Math.random() - 0.5) * 0.5;
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const particleMat = new THREE.PointsMaterial({ color: color, size: 0.05, transparent: true });
+        const particles = new THREE.Points(particleGeo, particleMat);
+        particles.position.copy(pos);
+        this.scene.add(particles);
+        this.particleSystems.push({ mesh: particles, life: 1.0 });
+    }
+
+    createShockwave(pos, color) {
+        const ringGeo = new THREE.RingGeometry(0.1, 0.2, 32);
+        const ringMat = new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide, transparent: true, opacity: 1 });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.copy(pos);
+        ring.position.y = 0.2; // Slightly above board
+        ring.rotation.x = Math.PI / 2;
+        this.scene.add(ring);
+        this.particleSystems.push({ mesh: ring, life: 1.0, isRing: true });
+    }
+
+    update(deltaTime) {
+        for (let i = this.debrisList.length - 1; i >= 0; i--) {
+            const debris = this.debrisList[i];
+            debris.userData.velocity.y -= 9.8 * deltaTime;
+            debris.position.addScaledVector(debris.userData.velocity, deltaTime);
+            if(debris.userData.rotationSpeed) {
+                debris.rotation.x += debris.userData.rotationSpeed.x * deltaTime;
+                debris.rotation.y += debris.userData.rotationSpeed.y * deltaTime;
+            }
+            if (debris.position.y < 0.1) {
+                debris.position.y = 0.1;
+                debris.userData.velocity.y *= -0.5;
+                debris.userData.velocity.x *= 0.8;
+                debris.userData.velocity.z *= 0.8;
+            }
+            if (debris.position.y < -2 || Math.abs(debris.position.x) > 20) {
+                this.scene.remove(debris);
+                this.debrisList.splice(i, 1);
+            }
+        }
+
+        for (let i = this.particleSystems.length - 1; i >= 0; i--) {
+            const ps = this.particleSystems[i];
+            ps.life -= deltaTime;
+            if (ps.life <= 0) {
+                this.scene.remove(ps.mesh);
+                this.particleSystems.splice(i, 1);
+            } else {
+                if (ps.isRing) {
+                    ps.mesh.scale.x += 15 * deltaTime;
+                    ps.mesh.scale.y += 15 * deltaTime;
+                    ps.mesh.material.opacity = ps.life;
+                } else {
+                    ps.mesh.material.opacity = ps.life;
+                }
+            }
+        }
+    }
+
+    clear() {
+        this.debrisList.forEach(d => this.scene.remove(d));
+        this.particleSystems.forEach(p => this.scene.remove(p.mesh));
+        this.debrisList = [];
+        this.particleSystems = [];
+    }
+
+    playSound(pieceType) {
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        const now = this.audioCtx.currentTime;
+        switch(pieceType) {
+            case 'pawn':
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now); osc.stop(now + 0.2); break;
+            case 'knight':
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 0.3);
+                gain.gain.setValueAtTime(0.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3); break;
+            case 'bishop':
+                osc.type = 'sine'; osc.frequency.setValueAtTime(1200, now);
+                osc.frequency.exponentialRampToValueAtTime(400, now + 0.4);
+                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now); osc.stop(now + 0.4); break;
+            case 'rook':
+                osc.type = 'square'; osc.frequency.setValueAtTime(80, now);
+                osc.frequency.exponentialRampToValueAtTime(30, now + 0.5);
+                gain.gain.setValueAtTime(0.6, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now); osc.stop(now + 0.5); break;
+            case 'queen':
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, now);
+                osc.frequency.linearRampToValueAtTime(60, now + 0.8);
+                gain.gain.setValueAtTime(0.7, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+                osc.start(now); osc.stop(now + 0.8); break;
+            case 'king':
+                osc.type = 'sine'; osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(20, now + 1.2);
+                gain.gain.setValueAtTime(0.8, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
+                osc.start(now); osc.stop(now + 1.2); break;
+        }
+    }
+}
+let destructionSystem = null; // [MOD] Global instance
+const PIECE_NAMES = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
+const PIECE_COLORS = { w: 0xF2EAD9, b: 0x22242A };
+
+// =========================================================
+// [MonsterBoard]
 // =========================================================
 class MonsterBoard {
     constructor(options = {}) {
@@ -960,7 +1191,7 @@ function position(sq){
     };
 }
 
-// ============ القطع (لم تمس) ============
+// ============ القطع ============
 function chessPiece(type, color){
     const g = new THREE.Group();
     const isWhite = color === 'w';
@@ -1121,6 +1352,8 @@ function onResize(){
 
 function animateGame(){
     requestAnimationFrame(animateGame);
+    const delta = gameClock.getDelta(); // [MOD]
+    
     if(cameraTween){
         const t = Math.min(1, (performance.now() - cameraTween.startTime) / cameraTween.duration);
         const ease = t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t;
@@ -1130,6 +1363,7 @@ function animateGame(){
     }
     if(controls) controls.update();
     if(board3D) board3D.update(performance.now() / 1000);
+    if(destructionSystem) destructionSystem.update(delta); // [MOD]
     if(renderer && scene && camera) renderer.render(scene, camera);
 }
 
@@ -1367,6 +1601,9 @@ async function initGame3D(){
 
     pieces = new THREE.Group();
     scene.add(pieces);
+    
+    // [MOD] Initialize Destruction System
+    destructionSystem = new ChessDestructionSystem(scene, camera);
 
     applyCustomization(currentCustom);
     gameInitialized = true;
@@ -1917,6 +2154,19 @@ function makeMove(from, to, promotion="q"){
     try{
         const move = chess.move({ from, to, promotion });
         if(!move) return false;
+        
+        // [MOD] Trigger Destruction Effect for Player Capture
+        if (move.captured && destructionSystem) {
+            const capturedColor = chess.turn() === 'w' ? 'b' : 'w'; 
+            const pos = position(to);
+            const vec = new THREE.Vector3(pos.x, 0.5, pos.z);
+            destructionSystem.triggerDestruction(
+                PIECE_NAMES[move.captured], 
+                vec, 
+                PIECE_COLORS[capturedColor]
+            );
+        }
+
         if(move.captured && chess.turn()==='b'){
             playerCaptures++;
             const rs = getRS();
@@ -2001,6 +2251,19 @@ function computer(){
     }
     if(chosen){
         const result = chess.move(chosen);
+        
+        // [MOD] Trigger Destruction Effect for AI Capture
+        if (result && result.captured && destructionSystem) {
+            const capturedColor = chess.turn() === 'w' ? 'b' : 'w'; // Turn already swapped after AI move
+            const pos = position(result.to);
+            const vec = new THREE.Vector3(pos.x, 0.5, pos.z);
+            destructionSystem.triggerDestruction(
+                PIECE_NAMES[result.captured], 
+                vec, 
+                PIECE_COLORS[capturedColor]
+            );
+        }
+
         drawBoard();
         document.getElementById("moves").textContent = chess.history().join("  ");
         if(result && result.captured) AudioEngine.sfxCapture();
@@ -2134,6 +2397,7 @@ window.newGame = function(){
     gameStarted = true; gameOverHandled = false;
     chess.reset(); snapshots = []; selected = null; pendingPromotion = null;
     thinking = false; playerCaptures = 0;
+    if(destructionSystem) destructionSystem.clear(); // [MOD] Clear debris on new game
     const promo = document.getElementById("promotion");
     if(promo) promo.style.display = "none";
     document.getElementById("moves").textContent = "سجل الحركات سيظهر هنا";
@@ -2147,6 +2411,7 @@ window.undoMove = function(){
     const snap = snapshots.pop();
     try{ chess.load(snap.fen); }catch(e){ return; }
     selected = null; pendingPromotion = null;
+    if(destructionSystem) destructionSystem.clear(); // [MOD]
     document.getElementById("promotion").style.display = "none";
     if(gameInitialized){ drawBoard(); resetColors(); }
     document.getElementById("moves").textContent = snap.history.length ? snap.history.join("  ") : "سجل الحركات سيظهر هنا";
